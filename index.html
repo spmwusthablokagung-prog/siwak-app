@@ -804,16 +804,21 @@ function renderWakaPage(){
       <td>${escapeHtml(w.nama)}</td>
       <td>${escapeHtml(w.jabatan)}</td>
       <td>${escapeHtml(w.tahun)}</td>
-      <td class="row-actions">
+      <td><div class="row-actions">
         <button class="btn btn-ghost btn-sm" onclick="openWakaModal('${w.id}')">Edit</button>
         <button class="btn btn-danger btn-sm" onclick="deleteWaka('${w.id}')">Hapus</button>
-      </td>
+      </div></td>
     </tr>`).join('');
   return `
     <div class="card">
       <div class="card-head">
         <div><h3>Data Wakil Kepala Sekolah</h3><div class="hint">Daftar waka beserta jabatan dan tahun menjabat.</div></div>
-        <button class="btn btn-primary" onclick="openWakaModal()">+ Tambah Waka</button>
+        <div class="toolbar">
+          <button class="btn btn-ghost" onclick="exportWakaXLSX()">&#8615; Export</button>
+          <input type="file" id="importWakaInput" accept=".xlsx,.xls" style="display:none;" onchange="importWakaXLSX(this)">
+          <button class="btn btn-ghost" onclick="document.getElementById('importWakaInput').click()">&#8613; Import</button>
+          <button class="btn btn-primary" onclick="openWakaModal()">+ Tambah Waka</button>
+        </div>
       </div>
       <div class="tbl-wrap">
       <table>
@@ -867,6 +872,58 @@ function deleteWaka(id){
     toast('Data waka dihapus');
   });
 }
+function exportWakaXLSX(){
+  const wakas = load('wakas', []);
+  if(wakas.length===0){ toast('Tidak ada data untuk diexport'); return; }
+  if(typeof XLSX==='undefined'){ toast('Gagal memuat modul Excel, coba muat ulang halaman'); return; }
+  const header = ['Nama','Jabatan','Tahun Menjabat'];
+  const rows = wakas.map(w=>[w.nama, w.jabatan, w.tahun]);
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Data Waka');
+  XLSX.writeFile(wb, 'data-waka-' + todayStr() + '.xlsx');
+  toast('Export berhasil, ' + wakas.length + ' data waka diunduh');
+}
+function importWakaXLSX(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  if(typeof XLSX==='undefined'){ toast('Gagal memuat modul Excel, coba muat ulang halaman'); input.value=''; return; }
+  const reader = new FileReader();
+  reader.onload = function(e){
+    let rows;
+    try{
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    }catch(err){
+      toast('Gagal membaca file Excel'); input.value=''; return;
+    }
+    if(!rows || rows.length<2){ toast('File Excel kosong atau tidak valid'); input.value=''; return; }
+    const jabatanList = load('jabatanList', []);
+    const jabatanNames = jabatanList.map(j=>j.nama.trim().toLowerCase());
+    const list = load('wakas', []);
+    let added = 0, skipped = 0, unmatchedJabatan = 0;
+    for(let i=1;i<rows.length;i++){
+      const cols = rows[i].map(v=>String(v==null?'':v).trim());
+      const nama = (cols[0]||'').trim();
+      const jabatan = (cols[1]||'').trim();
+      const tahun = (cols[2]||'').trim();
+      if(!nama || !jabatan || !tahun){ skipped++; continue; }
+      if(!jabatanNames.includes(jabatan.toLowerCase())) unmatchedJabatan++;
+      list.push({id:uid(), nama, jabatan, tahun});
+      added++;
+    }
+    save('wakas', list);
+    render();
+    let msg = added + ' data waka berhasil diimpor';
+    if(unmatchedJabatan>0) msg += ', ' + unmatchedJabatan + ' jabatan belum terdaftar di Kelola Jabatan';
+    if(skipped>0) msg += ', ' + skipped + ' baris dilewati (kolom belum lengkap)';
+    toast(msg);
+  };
+  reader.readAsArrayBuffer(file);
+  input.value = '';
+}
 
 /* =========================================================
    DATA PROGRAM
@@ -892,7 +949,7 @@ function renderProgramPage(){
     const current = getCurrentSubmissionForProgram(p.id, p.jenis);
     let ajukanBtn;
     if(isKepsek){
-      if(!current) ajukanBtn = `<span style="color:var(--muted);font-size:12.5px;">Belum diajukan</span>`;
+      if(!current) ajukanBtn = `<span class="tag" style="background:var(--surface-2);color:var(--muted);">Belum diajukan</span>`;
       else if(current.status==='disetujui') ajukanBtn = `<span class="tag tag-bulanan">&#10003; Selesai</span>`;
       else if(current.status==='ditolak') ajukanBtn = `<span class="tag tag-tahunan">Ditolak</span>`;
       else ajukanBtn = `<span class="tag" style="background:var(--surface-2);color:var(--muted);">Menunggu</span>`;
@@ -912,11 +969,11 @@ function renderProgramPage(){
       <td>${escapeHtml(p.nama)}</td>
       <td>${escapeHtml(wakaMap[p.wakaId] || '-')}</td>
       <td><span class="tag tag-${p.jenis}">${jenisLabel(p.jenis)}</span></td>
-      <td class="row-actions">
+      <td><div class="row-actions">
         ${ajukanBtn}
         ${isKepsek || isLocked ? '' : `<button class="btn btn-ghost btn-sm" onclick="openProgramModal('${p.id}')">Edit</button>`}
         ${isKepsek ? '' : `<button class="btn btn-danger btn-sm" onclick="deleteProgram('${p.id}')">Hapus</button>`}
-      </td>
+      </div></td>
     </tr>`;
   }).join('');
   return `
@@ -979,10 +1036,10 @@ function renderProgramHarianPage(){
       </td>
       <td style="font-size:13px;">${waktu}</td>
       <td>${ketepatan}</td>
-      <td class="row-actions">
+      <td><div class="row-actions">
         <button class="btn btn-ghost btn-sm" onclick="openProgramModal('${p.id}')">Edit</button>
         <button class="btn btn-danger btn-sm" onclick="deleteProgram('${p.id}')">Hapus</button>
-      </td>
+      </div></td>
     </tr>`;
   }).join('');
   return `
@@ -1318,11 +1375,11 @@ function renderApprovePage(){
       <td>${escapeHtml(wakaMap[s.wakaId]||'(waka dihapus)')}</td>
       <td>${formatDateOnly(s.diajukanPada)}</td>
       <td>${submissionStatusTag(s.status||'pending')}${catatan}</td>
-      <td class="row-actions">
+      <td><div class="row-actions">
         ${s.foto ? `<button class="btn btn-ghost btn-sm" onclick="openFotoDetail('${s.id}')">&#128247; Foto</button>` : ''}
         <button class="btn btn-primary btn-sm" onclick="openApproveDecisionModal('${s.id}','disetujui')">Setujui</button>
         <button class="btn btn-danger btn-sm" onclick="openApproveDecisionModal('${s.id}','ditolak')">Tolak</button>
-      </td>
+      </div></td>
     </tr>`;
   }).join('');
 
@@ -1513,10 +1570,10 @@ function renderUserPage(sub){
       </td>
       <td>${escapeHtml(u.jabatan||'-')}</td>
       <td><span class="tag tag-role-${u.role==='admin'?'admin':(u.role==='kepala sekolah'?'kepsek':'waka')}">${capitalize(u.role)}</span></td>
-      <td class="row-actions">
+      <td><div class="row-actions">
         <button class="btn btn-ghost btn-sm" onclick="openUserModal('${u.id}')">Edit</button>
         <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}')">Hapus</button>
-      </td>
+      </div></td>
     </tr>`).join('');
   return tabs + `
     <div class="card">
@@ -1659,7 +1716,12 @@ function renderSettingsPage(){
     <div class="card">
       <div class="card-head">
         <div><h3>Kelola Jabatan</h3><div class="hint">Daftar jabatan induk waka. Dipakai sebagai sumber pilihan jabatan saat menambah data waka.</div></div>
-        <button class="btn btn-primary" onclick="openJabatanModal()">+ Tambah Jabatan</button>
+        <div class="toolbar">
+          <button class="btn btn-ghost" onclick="exportJabatanXLSX()">&#8615; Export</button>
+          <input type="file" id="importJabatanInput" accept=".xlsx,.xls" style="display:none;" onchange="importJabatanXLSX(this)">
+          <button class="btn btn-ghost" onclick="document.getElementById('importJabatanInput').click()">&#8613; Import</button>
+          <button class="btn btn-primary" onclick="openJabatanModal()">+ Tambah Jabatan</button>
+        </div>
       </div>
       <div class="tbl-wrap">
       <table class="tbl-settings">
@@ -1748,6 +1810,56 @@ function deleteJabatan(id){
     render();
     toast('Jabatan dihapus');
   });
+}
+function exportJabatanXLSX(){
+  const jabatanList = load('jabatanList', []);
+  if(jabatanList.length===0){ toast('Tidak ada data untuk diexport'); return; }
+  if(typeof XLSX==='undefined'){ toast('Gagal memuat modul Excel, coba muat ulang halaman'); return; }
+  const header = ['Nama Jabatan'];
+  const rows = jabatanList.map(j=>[j.nama]);
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Kelola Jabatan');
+  XLSX.writeFile(wb, 'data-jabatan-' + todayStr() + '.xlsx');
+  toast('Export berhasil, ' + jabatanList.length + ' jabatan diunduh');
+}
+function importJabatanXLSX(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  if(typeof XLSX==='undefined'){ toast('Gagal memuat modul Excel, coba muat ulang halaman'); input.value=''; return; }
+  const reader = new FileReader();
+  reader.onload = function(e){
+    let rows;
+    try{
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    }catch(err){
+      toast('Gagal membaca file Excel'); input.value=''; return;
+    }
+    if(!rows || rows.length<2){ toast('File Excel kosong atau tidak valid'); input.value=''; return; }
+    const list = load('jabatanList', []);
+    const existingNames = list.map(j=>j.nama.trim().toLowerCase());
+    let added = 0, skipped = 0, duplikat = 0;
+    for(let i=1;i<rows.length;i++){
+      const cols = rows[i].map(v=>String(v==null?'':v).trim());
+      const nama = (cols[0]||'').trim();
+      if(!nama){ skipped++; continue; }
+      if(existingNames.includes(nama.toLowerCase())){ duplikat++; continue; }
+      list.push({id:uid(), nama});
+      existingNames.push(nama.toLowerCase());
+      added++;
+    }
+    save('jabatanList', list);
+    render();
+    let msg = added + ' jabatan berhasil diimpor';
+    if(duplikat>0) msg += ', ' + duplikat + ' sudah ada sebelumnya';
+    if(skipped>0) msg += ', ' + skipped + ' baris dilewati';
+    toast(msg);
+  };
+  reader.readAsArrayBuffer(file);
+  input.value = '';
 }
 function addTahun(){
   const val = document.getElementById('fTahunBaru').value.trim();
