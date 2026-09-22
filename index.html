@@ -245,8 +245,10 @@ input[type="month"]::-webkit-calendar-picker-indicator{
 .popup-list .pl-name{font-weight:700;font-size:13.5px;}
 .popup-list .pl-meta{font-size:12px;color:var(--muted);margin-top:2px;}
 
+.access-table{table-layout:fixed;width:100%;}
 .access-table td, .access-table th{text-align:center;}
 .access-table td:first-child, .access-table th:first-child{text-align:left;}
+.access-table th:not(:first-child), .access-table td:not(:first-child){width:150px;}
 .chk{width:17px;height:17px;accent-color:var(--primary);}
 
 .toast{
@@ -432,60 +434,71 @@ async function syncToServer(key, val){
   const res = await apiPost({action:'save', key:key, value:payload});
   if(!res || !res.ok) throw new Error((res && res.error) || 'Gagal menyimpan');
 }
-function isEmptyValue(v){
-  if(v===undefined || v===null) return true;
-  if(Array.isArray(v)) return v.length===0;
-  if(typeof v==='object') return Object.keys(v).length===0;
-  return false;
-}
 async function initDB(){
   SYNCED_KEYS.forEach(k=>{ DB[k] = loadLocalCache(k, undefined); });
-  seedIfEmpty();
+
   if(!isApiConfigured()){
     console.warn('API_URL belum diatur di dalam file ini, aplikasi berjalan mode lokal (localStorage) saja.');
+    seedLocalOnly();
     return;
   }
+
   try{
     const res = await apiGet('loadAll');
     if(!res || !res.ok) throw new Error((res && res.error) || 'Respon tidak valid dari Apps Script');
+    /* Kunci perbaikan bug: hanya key yang server KONFIRMASI belum pernah
+       dibuat sama sekali (undefined/tidak ada di respons) yang boleh diisi
+       data contoh & ditulis ke server. Array/objek kosong ([] atau {}) yang
+       memang dikembalikan server berarti datanya SUDAH ADA tapi sengaja
+       kosong (misalnya seluruh data dihapus pengguna) - tidak boleh
+       ditimpa data contoh. */
+    const belumPernahDibuat = [];
     SYNCED_KEYS.forEach(k=>{
       const serverVal = res.data ? res.data[k] : undefined;
-      if(!isEmptyValue(serverVal)){
+      if(serverVal === undefined){
+        belumPernahDibuat.push(k);
+      } else {
         DB[k] = serverVal;
         saveLocalCache(k, serverVal);
-      } else if(!isEmptyValue(DB[k])){
-        /* Sheet kosong tapi ada data lokal/seed -> unggah supaya database online terisi */
-        queueSync(k, DB[k]);
       }
     });
+    if(belumPernahDibuat.length>0) seedServerConfirmedEmpty(belumPernahDibuat);
+    migratePermissionsIfNeeded();
   }catch(e){
-    console.error('Gagal memuat data dari Google Sheets, memakai data lokal/cache', e);
-    showSyncError('Gagal terhubung ke database online. Menampilkan data cache lokal (mungkin belum terbaru).');
+    console.error('Gagal memuat data dari Google Sheets, memakai data cache lokal', e);
+    showSyncError('Gagal terhubung ke database online. Menampilkan data cache lokal (mungkin belum terbaru). Data TIDAK ditimpa ke server — coba muat ulang saat koneksi stabil.');
+    /* Sengaja TIDAK melakukan seeding atau sinkronisasi apa pun di sini,
+       supaya data asli di server tidak berisiko tertimpa data lokal yang
+       mungkin kosong/usang. */
   }
 }
 
 /* =========================================================
    SEED DATA (first run only)
 ========================================================= */
-function seedIfEmpty(){
-  if(load('wakas', null) === null){
-    save('wakas', [
+/* =========================================================
+   DATA CONTOH / DEFAULT
+   PENTING: default ini HANYA boleh ditulis ke database online
+   ketika sudah dipastikan lewat respons server bahwa datanya
+   memang belum pernah ada sama sekali (lihat initDB). Ini untuk
+   mencegah data asli tertimpa data contoh hanya karena cache di
+   satu perangkat kosong.
+========================================================= */
+function defaultValueFor(key){
+  switch(key){
+    case 'wakas': return [
       {id:uid(), nama:'Ahmad Fauzi, S.Pd.', jabatan:'Waka Kurikulum', tahun:'2023'},
       {id:uid(), nama:'Siti Rahma, M.Pd.', jabatan:'Waka Kesiswaan', tahun:'2022'},
       {id:uid(), nama:'Budi Santoso, S.Pd.', jabatan:'Waka Sarana Prasarana', tahun:'2024'},
       {id:uid(), nama:'Dewi Lestari, S.Pd.', jabatan:'Waka Humas', tahun:'2023'}
-    ]);
-  }
-  if(load('jabatanList', null) === null){
-    save('jabatanList', [
+    ];
+    case 'jabatanList': return [
       {id:uid(), nama:'Waka Kurikulum'},
       {id:uid(), nama:'Waka Kesiswaan'},
       {id:uid(), nama:'Waka Sarana Prasarana'},
       {id:uid(), nama:'Waka Humas'}
-    ]);
-  }
-  if(load('programs', null) === null){
-    save('programs', [
+    ];
+    case 'programs': return [
       {id:uid(), nama:'Piket Gerbang Pagi', jenis:'harian'},
       {id:uid(), nama:'Monitoring Jurnal Mengajar', jenis:'harian'},
       {id:uid(), nama:'Rapat Koordinasi Mingguan', jenis:'mingguan'},
@@ -494,36 +507,46 @@ function seedIfEmpty(){
       {id:uid(), nama:'Laporan Sarana Prasarana', jenis:'bulanan'},
       {id:uid(), nama:'Penyusunan Program Kerja Tahunan', jenis:'tahunan'},
       {id:uid(), nama:'Akreditasi & Evaluasi Diri Sekolah', jenis:'tahunan'}
-    ]);
-  }
-  if(load('submissions', null) === null){ save('submissions', []); }
-  if(load('users', null) === null){
-    save('users', [
+    ];
+    case 'submissions': return [];
+    case 'users': return [
       {id:uid(), username:'admin', password:'admin123', role:'admin', jabatan:'Administrator Sistem'},
       {id:uid(), username:'kepsek', password:'kepsek123', role:'kepala sekolah', jabatan:'Kepala Sekolah'},
       {id:uid(), username:'waka1', password:'waka123', role:'waka', jabatan:'Waka Kurikulum'}
-    ]);
+    ];
+    case 'permissions': return {
+      'admin':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:true, pengaturan:true, tambahProgram:true},
+      'kepala sekolah':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false},
+      'waka':{dashboard:true, approve:false, waka:false, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false}
+    };
+    case 'settings': return {tahunAjaran:['2024/2025','2025/2026'], tahunAktif:'2025/2026', theme:'light'};
+    default: return undefined;
   }
-  if(load('permissions', null) === null){
-    save('permissions', {
-      'admin':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:true, pengaturan:true},
-      'kepala sekolah':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:false, pengaturan:false},
-      'waka':{dashboard:true, approve:false, waka:false, program:true, programHarian:true, rekap:true, user:false, pengaturan:false}
-    });
-  } else {
-    /* migrasi: pastikan menu 'approve' dan 'programHarian' tersedia pada data permissions lama */
-    const perms = load('permissions', {});
-    let changed = false;
-    const defaults = {admin:true, 'kepala sekolah':true, waka:false};
-    Object.keys(defaults).forEach(role=>{
-      if(perms[role] && perms[role].approve===undefined){ perms[role].approve = defaults[role]; changed = true; }
-      if(perms[role] && perms[role].programHarian===undefined){ perms[role].programHarian = true; changed = true; }
-    });
-    if(changed) save('permissions', perms);
-  }
-  if(load('settings', null) === null){
-    save('settings', {tahunAjaran:['2024/2025','2025/2026'], tahunAktif:'2025/2026', theme:'light'});
-  }
+}
+/** Mode lokal murni (API belum diatur): aman mengisi contoh berdasarkan cache lokal saja. */
+function seedLocalOnly(){
+  SYNCED_KEYS.forEach(k=>{
+    if(load(k, null) === null) save(k, defaultValueFor(k));
+  });
+  migratePermissionsIfNeeded();
+}
+/** Mode online: HANYA dipanggil untuk key yang sudah dikonfirmasi server benar-benar belum pernah dibuat. */
+function seedServerConfirmedEmpty(keys){
+  keys.forEach(k=>{ save(k, defaultValueFor(k)); });
+}
+/** Migrasi: pastikan field permissions baru tersedia pada data permissions lama. */
+function migratePermissionsIfNeeded(){
+  const perms = load('permissions', null);
+  if(!perms) return;
+  let changed = false;
+  const defaults = {admin:true, 'kepala sekolah':true, waka:false};
+  const tambahProgramDefaults = {admin:true, 'kepala sekolah':false, waka:false};
+  Object.keys(defaults).forEach(role=>{
+    if(perms[role] && perms[role].approve===undefined){ perms[role].approve = defaults[role]; changed = true; }
+    if(perms[role] && perms[role].programHarian===undefined){ perms[role].programHarian = true; changed = true; }
+    if(perms[role] && perms[role].tambahProgram===undefined){ perms[role].tambahProgram = tambahProgramDefaults[role]; changed = true; }
+  });
+  if(changed) save('permissions', perms);
 }
 
 /* =========================================================
@@ -603,8 +626,8 @@ function setTheme(t){
 ========================================================= */
 const MENU_DEFS = [
   {key:'dashboard', label:'Dashboard', icon:'&#9635;'},
-  {key:'approve', label:'Approve Program', icon:'&#10003;'},
   {key:'waka', label:'Data Waka', icon:'&#9782;'},
+  {key:'approve', label:'Approve Program', icon:'&#10003;'},
   {key:'program', label:'Data Program', icon:'&#9776;'},
   {key:'programHarian', label:'Program Harian', icon:'&#128197;'},
   {key:'rekap', label:'Rekap Program', icon:'&#128203;', subs:[
@@ -985,8 +1008,8 @@ function renderProgramPage(){
           ${isWaka || isKepsek ? '' : `
           <button class="btn btn-ghost" onclick="exportProgramXLSX('program')">&#8615; Export</button>
           <input type="file" id="importProgramInput" accept=".xlsx,.xls" style="display:none;" onchange="importProgramXLSX(this, 'program')">
-          <button class="btn btn-ghost" onclick="document.getElementById('importProgramInput').click()">&#8613; Import</button>
-          <button class="btn btn-primary" onclick="openProgramModal()">+ Tambah Program</button>`}
+          <button class="btn btn-ghost" onclick="document.getElementById('importProgramInput').click()">&#8613; Import</button>`}
+          ${canAccess('tambahProgram') ? `<button class="btn btn-primary" onclick="openProgramModal()">+ Tambah Program</button>` : ''}
         </div>
       </div>
       <div class="tbl-wrap">
@@ -1665,7 +1688,13 @@ function renderAksesPage(){
   const perms = load('permissions', {});
   const roles = ['admin','kepala sekolah','waka'];
   const menus = [{key:'dashboard',label:'Dashboard'},{key:'approve',label:'Approve Program'},{key:'waka',label:'Data Waka'},{key:'program',label:'Data Program'},{key:'programHarian',label:'Program Harian'},{key:'rekap',label:'Rekap Program'},{key:'user',label:'User'},{key:'pengaturan',label:'Pengaturan'}];
+  const fitur = [{key:'tambahProgram',label:'Tombol Tambah Program (menu Data Program)'}];
   const rows = menus.map(m=>`
+    <tr>
+      <td>${m.label}</td>
+      ${roles.map(r=>`<td><input type="checkbox" class="chk" data-role="${r}" data-menu="${m.key}" ${perms[r]&&perms[r][m.key]?'checked':''} onchange="onAksesChange(this)" ${r==='admin'?'disabled':''}></td>`).join('')}
+    </tr>`).join('');
+  const fiturRows = fitur.map(m=>`
     <tr>
       <td>${m.label}</td>
       ${roles.map(r=>`<td><input type="checkbox" class="chk" data-role="${r}" data-menu="${m.key}" ${perms[r]&&perms[r][m.key]?'checked':''} onchange="onAksesChange(this)" ${r==='admin'?'disabled':''}></td>`).join('')}
@@ -1679,6 +1708,17 @@ function renderAksesPage(){
       <table class="access-table">
         <thead><tr><th>Menu</th><th>Admin</th><th>Kepala Sekolah</th><th>Waka</th></tr></thead>
         <tbody>${rows}</tbody>
+      </table>
+      </div>
+    </div>
+    <div class="card" style="margin-top:18px;">
+      <div class="card-head">
+        <div><h3>Kelola Fitur</h3><div class="hint">Atur fitur tertentu di dalam suatu menu secara terpisah per role, di luar akses menu secara umum.</div></div>
+      </div>
+      <div class="tbl-wrap">
+      <table class="access-table">
+        <thead><tr><th>Fitur</th><th>Admin</th><th>Kepala Sekolah</th><th>Waka</th></tr></thead>
+        <tbody>${fiturRows}</tbody>
       </table>
       </div>
     </div>
