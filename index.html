@@ -1,0 +1,1846 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Siwak &mdash; Sistem Monitoring Wakil Kepala</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#F4F5EE;
+  --surface:#FFFFFF;
+  --surface-2:#EEF0E6;
+  --ink:#1B231F;
+  --muted:#647268;
+  --line:#DCE2D6;
+  --primary:#0F3B3C;
+  --primary-2:#175958;
+  --primary-soft:#E4EDEC;
+  --accent:#C08A2E;
+  --accent-soft:#F3E6C7;
+  --success:#3E7A54;
+  --success-soft:#E1EFE5;
+  --danger:#B0392F;
+  --danger-soft:#F6E2DF;
+  --radius:10px;
+  --radius-sm:6px;
+  --font-head:'Poppins', system-ui, sans-serif;
+  --font-body:'Poppins', system-ui, sans-serif;
+  --shadow:0 1px 2px rgba(15,59,60,.06);
+}
+:root[data-theme="dark"]{
+  --bg:#12211E;
+  --surface:#173330;
+  --surface-2:#1D3B37;
+  --ink:#EBF1EC;
+  --muted:#9BB0A5;
+  --line:#2B4B45;
+  --primary:#5FB8AE;
+  --primary-2:#7FCDC2;
+  --primary-soft:#1E403C;
+  --accent:#E3B24F;
+  --accent-soft:#3A3021;
+  --success:#79D19A;
+  --success-soft:#1E3A29;
+  --danger:#F2948A;
+  --danger-soft:#3E2422;
+  --shadow:0 1px 2px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--font-body);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{font-family:var(--font-head);font-weight:600;margin:0;color:var(--ink);}
+button{font-family:var(--font-body);cursor:pointer;}
+input,select,textarea{font-family:var(--font-body);}
+a{color:inherit;}
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px;}
+
+/* ---------- LOGIN ---------- */
+#loginScreen{
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:
+    radial-gradient(circle at 15% 20%, var(--primary-soft) 0%, transparent 45%),
+    var(--bg);
+  padding:24px;
+}
+.login-card{
+  width:100%;max-width:380px;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--radius);
+  padding:36px 32px;box-shadow:0 8px 30px rgba(15,59,60,.08);
+}
+.login-mark{display:flex;align-items:center;gap:10px;margin-bottom:22px;}
+.login-mark .mark-box{
+  width:38px;height:38px;border-radius:8px;background:var(--primary);
+  color:#fff;display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-head);font-weight:700;font-size:18px;
+}
+.login-mark span{font-family:var(--font-head);font-size:19px;font-weight:600;}
+.login-card h1{font-size:22px;margin-bottom:4px;}
+.login-card p.sub{color:var(--muted);font-size:13.5px;margin:0 0 22px;}
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:6px;letter-spacing:.01em;}
+.field input, .field select, .field textarea{
+  width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);
+  background:var(--surface);color:var(--ink);font-size:14px;outline:none;transition:border-color .15s;
+}
+.field input:focus, .field select:focus, .field textarea:focus{border-color:var(--primary-2);}
+.btn{
+  border:none;border-radius:var(--radius-sm);padding:10px 16px;font-size:13.5px;font-weight:600;
+  display:inline-flex;align-items:center;gap:6px;transition:opacity .15s, transform .05s;
+}
+.btn:active{transform:translateY(1px);}
+.btn-primary{background:var(--primary);color:#fff;}
+.btn-primary:hover{opacity:.9;}
+.btn-accent{background:var(--accent);color:#221a08;}
+.btn-accent:hover{opacity:.9;}
+.btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--line);}
+.btn-ghost:hover{background:var(--surface-2);}
+.btn-danger{background:var(--danger-soft);color:var(--danger);}
+.btn-danger:hover{opacity:.85;}
+.btn-block{width:100%;justify-content:center;}
+.btn-sm{padding:6px 10px;font-size:12.5px;border-radius:6px;}
+.login-error{
+  background:var(--danger-soft);color:var(--danger);font-size:13px;padding:9px 12px;
+  border-radius:var(--radius-sm);margin-bottom:14px;display:none;
+}
+.login-hint{margin-top:18px;font-size:12px;color:var(--muted);line-height:1.6;border-top:1px dashed var(--line);padding-top:14px;}
+
+/* ---------- APP LAYOUT ---------- */
+#app{display:none;min-height:100vh;}
+#app.active{display:flex;}
+.sidebar{
+  width:236px;flex-shrink:0;background:var(--primary);color:#EAF3F1;
+  display:flex;flex-direction:column;padding:22px 14px;
+}
+.brand{display:flex;align-items:center;gap:10px;padding:0 8px 22px;border-bottom:1px solid rgba(255,255,255,.12);margin-bottom:16px;}
+.brand .mark-box{width:34px;height:34px;border-radius:8px;background:var(--accent);color:#221a08;display:flex;align-items:center;justify-content:center;font-family:var(--font-head);font-weight:700;font-size:16px;flex-shrink:0;}
+.brand-text{line-height:1.25;}
+.brand-text b{font-family:var(--font-head);font-size:16px;display:block;color:#fff;}
+.brand-text small{font-size:11px;color:#B7D2CC;}
+.nav-group{margin-bottom:4px;}
+.nav-item{
+  display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;font-size:13.5px;
+  color:#D6E8E4;cursor:pointer;font-weight:500;margin-bottom:2px;user-select:none;
+}
+.nav-item .ic{width:18px;text-align:center;flex-shrink:0;font-size:14px;}
+.nav-item:hover{background:rgba(255,255,255,.08);color:#fff;}
+.nav-item.active{background:var(--accent);color:#221a08;font-weight:700;}
+.nav-sub{padding-left:30px;margin-bottom:6px;display:none;}
+.nav-sub.open{display:block;}
+.nav-sub .nav-item{font-size:12.8px;padding:7px 10px;}
+.nav-caret{margin-left:auto;font-size:10px;transition:transform .15s;}
+.nav-caret.rot{transform:rotate(90deg);}
+.nav-badge{
+  margin-left:auto;background:var(--accent);color:#221a08;font-size:11px;font-weight:800;
+  min-width:19px;height:19px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  padding:0 5px;line-height:1;flex-shrink:0;
+}
+.nav-item.active .nav-badge{background:#221a08;color:var(--accent);}
+.sidebar-foot{margin-top:auto;padding-top:14px;border-top:1px solid rgba(255,255,255,.12);}
+.who{font-size:12px;color:#B7D2CC;padding:0 8px 8px;}
+.who b{color:#fff;display:block;font-size:13px;}
+
+.main{flex:1;display:flex;flex-direction:column;min-width:0;}
+.topbar{
+  height:62px;flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;padding:0 26px;position:sticky;top:0;z-index:5;
+}
+.topbar h2{font-size:19px;}
+.topbar-right{display:flex;align-items:center;gap:10px;}
+.theme-toggle{
+  width:38px;height:38px;border-radius:8px;border:1px solid var(--line);background:var(--surface);
+  display:flex;align-items:center;justify-content:center;font-size:15px;
+}
+.content{padding:26px;flex:1;overflow-y:auto;}
+
+/* ---------- DASHBOARD ---------- */
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:22px;}
+.kpi-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;}
+.kpi-card .kpi-label{font-size:12.5px;color:var(--muted);font-weight:600;margin-bottom:8px;}
+.kpi-card .kpi-value{font-family:var(--font-head);font-size:32px;color:var(--primary-2);}
+:root[data-theme="dark"] .kpi-card .kpi-value{color:var(--primary);}
+.kpi-card.gold .kpi-value{color:var(--accent);}
+
+.section-title{display:flex;align-items:center;justify-content:between;margin:26px 0 12px;}
+.section-title h3{font-size:15.5px;color:var(--muted);font-weight:700;letter-spacing:.01em;}
+
+.prog-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;}
+.prog-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;}
+.prog-card .plabel{font-size:13px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+.plabel .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);}
+.pbar-track{height:8px;background:var(--surface-2);border-radius:6px;overflow:hidden;margin-bottom:8px;}
+.pbar-fill{height:100%;background:linear-gradient(90deg,var(--primary-2),var(--accent));border-radius:6px;}
+.pbar-meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);}
+.pbar-meta b{color:var(--ink);font-size:16px;font-family:var(--font-head);}
+
+/* ---------- CARD / TABLE ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+.card-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line);gap:12px;flex-wrap:wrap;}
+.card-head h3{font-size:15px;}
+.card-head .hint{font-size:12px;color:var(--muted);margin-top:2px;}
+table{width:100%;border-collapse:collapse;font-size:13.5px;}
+thead th{
+  text-align:left;font-size:11.5px;color:var(--muted);text-transform:none;font-weight:700;
+  padding:10px 20px;border-bottom:1px solid var(--line);background:var(--surface-2);white-space:nowrap;
+}
+tbody td{padding:11px 20px;border-bottom:1px solid var(--line);vertical-align:middle;}
+tbody tr:last-child td{border-bottom:none;}
+tbody tr:hover{background:var(--surface-2);}
+.tbl-wrap{overflow-x:auto;}
+.empty-row td{text-align:center;color:var(--muted);padding:34px 20px;font-size:13px;}
+.tag{display:inline-flex;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:700;}
+.tag-harian{background:var(--primary-soft);color:var(--primary-2);}
+.tag-mingguan{background:var(--accent-soft);color:var(--accent);}
+.tag-bulanan{background:var(--success-soft);color:var(--success);}
+.tag-tahunan{background:var(--danger-soft);color:var(--danger);}
+.tag-role-admin{background:var(--danger-soft);color:var(--danger);}
+.tag-role-kepsek{background:var(--accent-soft);color:var(--accent);}
+.tag-role-waka{background:var(--primary-soft);color:var(--primary-2);}
+.row-actions{display:flex;gap:6px;flex-wrap:nowrap;white-space:nowrap;}
+.link-count{background:none;border:none;color:var(--primary-2);font-weight:700;font-size:14px;text-decoration:underline;padding:0;}
+.pct-pill{display:inline-flex;align-items:center;gap:6px;font-weight:700;}
+.pct-track{width:60px;height:6px;background:var(--surface-2);border-radius:4px;overflow:hidden;}
+.pct-fill{height:100%;background:var(--primary-2);}
+
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.toolbar input[type=text], .toolbar input[type=date], .toolbar input[type=week], .toolbar input[type=month], .toolbar select{
+  padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius-sm);font-size:13px;background:var(--surface);color:var(--ink);
+}
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="week"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator{
+  cursor:pointer;padding:3px;border-radius:4px;filter:none;
+}
+:root[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator,
+:root[data-theme="dark"] input[type="week"]::-webkit-calendar-picker-indicator,
+:root[data-theme="dark"] input[type="month"]::-webkit-calendar-picker-indicator{
+  filter:invert(1) brightness(1.6);
+}
+.subtabs{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap;}
+.subtab{padding:8px 15px;border-radius:8px;font-size:13px;font-weight:600;background:var(--surface);border:1px solid var(--line);color:var(--muted);}
+.subtab.active{background:var(--primary);color:#fff;border-color:var(--primary);}
+
+/* ---------- MODAL ---------- */
+.modal-overlay{position:fixed;inset:0;background:rgba(15,25,22,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;}
+.modal-box{background:var(--surface);border-radius:var(--radius);width:100%;max-width:460px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25);}
+.modal-box.wide{max-width:640px;}
+.modal-head{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;}
+.modal-head h3{font-size:16.5px;}
+.modal-close{background:none;border:none;font-size:19px;color:var(--muted);line-height:1;}
+.modal-body{padding:20px 22px;overflow-y:auto;}
+.modal-foot{padding:16px 22px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px;}
+.popup-list{list-style:none;margin:0;padding:0;}
+.popup-list li{padding:10px 0;border-bottom:1px solid var(--line);}
+.popup-list li:last-child{border-bottom:none;}
+.popup-list .pl-name{font-weight:700;font-size:13.5px;}
+.popup-list .pl-meta{font-size:12px;color:var(--muted);margin-top:2px;}
+
+.access-table td, .access-table th{text-align:center;}
+.access-table td:first-child, .access-table th:first-child{text-align:left;}
+.chk{width:17px;height:17px;accent-color:var(--primary);}
+
+.toast{
+  position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);
+  padding:10px 20px;border-radius:8px;font-size:13.5px;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s, transform .2s;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(-6px);}
+
+/* tabel pada halaman Pengaturan */
+.tbl-settings{width:100%;table-layout:auto;}
+.tbl-settings .col-no{width:46px;text-align:center;white-space:nowrap;}
+.tbl-settings .col-act{width:1%;white-space:nowrap;text-align:right;}
+.tbl-settings .cell-name{display:table-cell;}
+.tbl-settings .cell-name .ta-val{font-weight:600;}
+.tbl-settings .cell-name .tag{margin-left:8px;vertical-align:middle;}
+.tbl-settings td,.tbl-settings th{padding:11px 14px;}
+.tbl-settings .row-actions{justify-content:flex-end;}
+@media (max-width:560px){
+  .tbl-settings .cell-name{white-space:normal;word-break:break-word;}
+  .tbl-settings .row-actions{flex-wrap:wrap;justify-content:flex-end;}
+}
+
+.settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;align-items:start;}
+@media (max-width:860px){
+  .settings-grid{grid-template-columns:1fr;}
+  .sidebar{position:fixed;left:-260px;top:0;bottom:0;z-index:30;transition:left .2s;box-shadow:6px 0 18px rgba(0,0,0,.2);}
+  .sidebar.open{left:0;}
+  .menu-btn{display:flex !important;}
+  .content{padding:16px;}
+  .topbar{padding:0 14px;}
+}
+.menu-btn{display:none;width:38px;height:38px;border-radius:8px;border:1px solid var(--line);background:var(--surface);align-items:center;justify-content:center;font-size:16px;}
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-mark">
+      <div class="mark-box">S</div>
+      <span>Siwak</span>
+    </div>
+    <h1>Masuk ke akun</h1>
+    <p class="sub">Sistem Monitoring Program Wakil Kepala Sekolah</p>
+    <div class="login-error" id="loginError">Username atau password salah.</div>
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="loginUser" placeholder="Masukkan username">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="loginPass" placeholder="Masukkan password">
+    </div>
+    <button class="btn btn-primary btn-block" id="loginSubmitBtn" onclick="doLogin()" disabled>Memuat data&hellip;</button>
+    <div class="login-hint">Akun demo &mdash; admin/admin123, kepsek/kepsek123, waka1/waka123. Data tersimpan online di Google Sheets.</div>
+    <div class="login-hint" id="loginSyncStatus" style="display:none;color:var(--danger);"></div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="mark-box">S</div>
+      <div class="brand-text"><b>Siwak</b><small>Sistem Monitoring Wakil Kepala</small></div>
+    </div>
+    <nav id="navMenu"></nav>
+    <div class="sidebar-foot">
+      <div class="who" id="whoBox"></div>
+      <div class="nav-item" onclick="confirmLogout()"><span class="ic">&#8617;</span> Keluar</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <button class="menu-btn" id="menuBtn" onclick="toggleSidebar()">&#9776;</button>
+        <h2 id="pageTitle">Dashboard</h2>
+      </div>
+      <div class="topbar-right">
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Ganti tema">&#9788;</button>
+      </div>
+    </div>
+    <div class="content" id="content"></div>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   KONFIGURASI DATABASE ONLINE (GOOGLE SHEETS)
+   1. Deploy file Code.gs (disertakan terpisah) sebagai Web App
+      di Google Apps Script, lalu tempel URL-nya di API_URL.
+   2. Ganti API_KEY di sini dengan nilai PERSIS SAMA seperti
+      API_KEY di Code.gs (bebas isi, anggap seperti password).
+   Selama API_URL belum diisi, aplikasi otomatis berjalan mode
+   lokal (localStorage) seperti semula, jadi tetap aman dicoba
+   dulu sebelum database online disiapkan.
+========================================================= */
+const API_URL = 'https://script.google.com/macros/s/AKfycbwJgH4ISnQpCBKYJudQp4KrAGD5WlZq9DECurPPiRaWktR-JjpxSXhYAzeIxdwsDJdVDQ/exec';
+const API_KEY = 'siwak-muadalah-2026';
+const SYNCED_KEYS = ['jabatanList','permissions','programs','settings','submissions','users','wakas'];
+function isApiConfigured(){ return !!API_URL && API_URL.indexOf('PASTE_URL')!==0; }
+
+/* =========================================================
+   STORAGE HELPERS
+   - DB{} : cache di memori, sumber data yang dipakai seluruh
+     aplikasi (dibaca lewat load(), ditulis lewat save()).
+   - localStorage : cache offline per perangkat + tempat
+     menyimpan 'session' (status login perangkat ini saja).
+   - Google Sheets (lewat Apps Script) : database utama,
+     dibaca saat aplikasi dibuka & ditulis tiap kali save().
+========================================================= */
+const DB_PREFIX = 'simonev_';
+let DB = {};
+function loadLocalCache(key, fallback){
+  try{
+    const raw = localStorage.getItem(DB_PREFIX+key);
+    if(raw===null) return fallback;
+    return JSON.parse(raw);
+  }catch(e){ return fallback; }
+}
+function saveLocalCache(key, val){
+  try{ localStorage.setItem(DB_PREFIX+key, JSON.stringify(val)); }catch(e){ console.error('Gagal menyimpan cache lokal', e); }
+}
+function load(key, fallback){
+  if(key==='session') return loadLocalCache('session', fallback);
+  if(Object.prototype.hasOwnProperty.call(DB, key) && DB[key]!==undefined) return DB[key];
+  return fallback;
+}
+function save(key, val){
+  if(key==='session'){ saveLocalCache('session', val); return; }
+  DB[key] = val;
+  saveLocalCache(key, val);
+  queueSync(key, val);
+}
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+/* ---------- Sinkronisasi ke Google Sheets ---------- */
+let _syncQueue = Promise.resolve();
+function showSyncError(msg){
+  const box = document.getElementById('loginSyncStatus');
+  if(box){ box.style.display='block'; box.textContent = msg; }
+  if(typeof toast==='function' && document.getElementById('app') && document.getElementById('app').classList.contains('active')){
+    toast(msg);
+  }
+}
+function queueSync(key, val){
+  if(!isApiConfigured() || !SYNCED_KEYS.includes(key)) return;
+  _syncQueue = _syncQueue.then(()=>syncToServer(key, val)).catch(err=>{
+    console.error('Sinkronisasi ke Google Sheets gagal', err);
+    showSyncError('Gagal menyimpan ke database online. Periksa koneksi internet, perubahan tersimpan lokal untuk sementara.');
+  });
+}
+function apiPost(body){
+  return fetch(API_URL, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify(Object.assign({}, body, {apiKey:API_KEY}))
+  }).then(r=>r.json());
+}
+function apiGet(action){
+  return fetch(API_URL + '?action=' + encodeURIComponent(action) + '&apiKey=' + encodeURIComponent(API_KEY))
+    .then(r=>r.json());
+}
+async function syncToServer(key, val){
+  let payload = val;
+  if(key==='submissions' && Array.isArray(val)){
+    payload = await Promise.all(val.map(async(item)=>{
+      if(item && typeof item.foto==='string' && item.foto.indexOf('data:image')===0){
+        try{
+          const res = await apiPost({action:'uploadImage', dataUrl:item.foto, filename:'foto-'+item.id});
+          if(res && res.ok && res.url) return Object.assign({}, item, {foto:res.url});
+        }catch(e){ console.error('Unggah foto gagal', e); }
+      }
+      return item;
+    }));
+    DB['submissions'] = payload;
+    saveLocalCache('submissions', payload);
+  }
+  const res = await apiPost({action:'save', key:key, value:payload});
+  if(!res || !res.ok) throw new Error((res && res.error) || 'Gagal menyimpan');
+}
+function isEmptyValue(v){
+  if(v===undefined || v===null) return true;
+  if(Array.isArray(v)) return v.length===0;
+  if(typeof v==='object') return Object.keys(v).length===0;
+  return false;
+}
+async function initDB(){
+  SYNCED_KEYS.forEach(k=>{ DB[k] = loadLocalCache(k, undefined); });
+  seedIfEmpty();
+  if(!isApiConfigured()){
+    console.warn('API_URL belum diatur di dalam file ini, aplikasi berjalan mode lokal (localStorage) saja.');
+    return;
+  }
+  try{
+    const res = await apiGet('loadAll');
+    if(!res || !res.ok) throw new Error((res && res.error) || 'Respon tidak valid dari Apps Script');
+    SYNCED_KEYS.forEach(k=>{
+      const serverVal = res.data ? res.data[k] : undefined;
+      if(!isEmptyValue(serverVal)){
+        DB[k] = serverVal;
+        saveLocalCache(k, serverVal);
+      } else if(!isEmptyValue(DB[k])){
+        /* Sheet kosong tapi ada data lokal/seed -> unggah supaya database online terisi */
+        queueSync(k, DB[k]);
+      }
+    });
+  }catch(e){
+    console.error('Gagal memuat data dari Google Sheets, memakai data lokal/cache', e);
+    showSyncError('Gagal terhubung ke database online. Menampilkan data cache lokal (mungkin belum terbaru).');
+  }
+}
+
+/* =========================================================
+   SEED DATA (first run only)
+========================================================= */
+function seedIfEmpty(){
+  if(load('wakas', null) === null){
+    save('wakas', [
+      {id:uid(), nama:'Ahmad Fauzi, S.Pd.', jabatan:'Waka Kurikulum', tahun:'2023'},
+      {id:uid(), nama:'Siti Rahma, M.Pd.', jabatan:'Waka Kesiswaan', tahun:'2022'},
+      {id:uid(), nama:'Budi Santoso, S.Pd.', jabatan:'Waka Sarana Prasarana', tahun:'2024'},
+      {id:uid(), nama:'Dewi Lestari, S.Pd.', jabatan:'Waka Humas', tahun:'2023'}
+    ]);
+  }
+  if(load('jabatanList', null) === null){
+    save('jabatanList', [
+      {id:uid(), nama:'Waka Kurikulum'},
+      {id:uid(), nama:'Waka Kesiswaan'},
+      {id:uid(), nama:'Waka Sarana Prasarana'},
+      {id:uid(), nama:'Waka Humas'}
+    ]);
+  }
+  if(load('programs', null) === null){
+    save('programs', [
+      {id:uid(), nama:'Piket Gerbang Pagi', jenis:'harian'},
+      {id:uid(), nama:'Monitoring Jurnal Mengajar', jenis:'harian'},
+      {id:uid(), nama:'Rapat Koordinasi Mingguan', jenis:'mingguan'},
+      {id:uid(), nama:'Supervisi Kelas', jenis:'mingguan'},
+      {id:uid(), nama:'Evaluasi Capaian KBM', jenis:'bulanan'},
+      {id:uid(), nama:'Laporan Sarana Prasarana', jenis:'bulanan'},
+      {id:uid(), nama:'Penyusunan Program Kerja Tahunan', jenis:'tahunan'},
+      {id:uid(), nama:'Akreditasi & Evaluasi Diri Sekolah', jenis:'tahunan'}
+    ]);
+  }
+  if(load('submissions', null) === null){ save('submissions', []); }
+  if(load('users', null) === null){
+    save('users', [
+      {id:uid(), username:'admin', password:'admin123', role:'admin', jabatan:'Administrator Sistem'},
+      {id:uid(), username:'kepsek', password:'kepsek123', role:'kepala sekolah', jabatan:'Kepala Sekolah'},
+      {id:uid(), username:'waka1', password:'waka123', role:'waka', jabatan:'Waka Kurikulum'}
+    ]);
+  }
+  if(load('permissions', null) === null){
+    save('permissions', {
+      'admin':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:true, pengaturan:true},
+      'kepala sekolah':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:false, pengaturan:false},
+      'waka':{dashboard:true, approve:false, waka:false, program:true, programHarian:true, rekap:true, user:false, pengaturan:false}
+    });
+  } else {
+    /* migrasi: pastikan menu 'approve' dan 'programHarian' tersedia pada data permissions lama */
+    const perms = load('permissions', {});
+    let changed = false;
+    const defaults = {admin:true, 'kepala sekolah':true, waka:false};
+    Object.keys(defaults).forEach(role=>{
+      if(perms[role] && perms[role].approve===undefined){ perms[role].approve = defaults[role]; changed = true; }
+      if(perms[role] && perms[role].programHarian===undefined){ perms[role].programHarian = true; changed = true; }
+    });
+    if(changed) save('permissions', perms);
+  }
+  if(load('settings', null) === null){
+    save('settings', {tahunAjaran:['2024/2025','2025/2026'], tahunAktif:'2025/2026', theme:'light'});
+  }
+}
+
+/* =========================================================
+   AUTH
+========================================================= */
+let session = loadLocalCache('session', null);
+
+function doLogin(){
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value;
+  const users = load('users', []);
+  const found = users.find(x=>x.username===u && x.password===p);
+  const err = document.getElementById('loginError');
+  if(!found){ err.style.display='block'; return; }
+  err.style.display='none';
+  session = {userId:found.id, username:found.username, role:found.role};
+  save('session', session);
+  enterApp();
+}
+function confirmLogout(){
+  confirmModal('Yakin ingin keluar dari akun ini?', ()=>{
+    doLogout();
+  }, 'Ya, Keluar', 'btn-primary');
+}
+function doLogout(){
+  session = null;
+  save('session', null);
+  document.getElementById('app').classList.remove('active');
+  document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('loginUser').value='';
+  document.getElementById('loginPass').value='';
+}
+function canAccess(menu){
+  const perms = load('permissions', {});
+  if(!session) return false;
+  const rolePerms = perms[session.role] || {};
+  return !!rolePerms[menu];
+}
+function getSessionUser(){
+  if(!session) return null;
+  return load('users', []).find(u=>u.id===session.userId) || null;
+}
+function getMyWakaId(){
+  if(!session || session.role!=='waka') return null;
+  const su = getSessionUser();
+  if(!su || !su.jabatan) return null;
+  const wakas = load('wakas', []);
+  const match = wakas.find(w=>w.jabatan===su.jabatan);
+  return match ? match.id : null;
+}
+
+/* =========================================================
+   THEME
+========================================================= */
+function applyTheme(){
+  const settings = load('settings', {});
+  const theme = settings.theme || 'light';
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('themeToggle');
+  if(btn) btn.innerHTML = theme==='dark' ? '&#9789;' : '&#9788;';
+}
+function toggleTheme(){
+  const settings = load('settings', {});
+  settings.theme = (settings.theme==='dark') ? 'light' : 'dark';
+  save('settings', settings);
+  applyTheme();
+}
+function setTheme(t){
+  const settings = load('settings', {});
+  settings.theme = t;
+  save('settings', settings);
+  applyTheme();
+}
+
+/* =========================================================
+   NAV / ROUTER
+========================================================= */
+const MENU_DEFS = [
+  {key:'dashboard', label:'Dashboard', icon:'&#9635;'},
+  {key:'approve', label:'Approve Program', icon:'&#10003;'},
+  {key:'waka', label:'Data Waka', icon:'&#9782;'},
+  {key:'program', label:'Data Program', icon:'&#9776;'},
+  {key:'programHarian', label:'Program Harian', icon:'&#128197;'},
+  {key:'rekap', label:'Rekap Program', icon:'&#128203;', subs:[
+    {key:'harian', label:'Rekap Harian'},
+    {key:'mingguan', label:'Rekap Mingguan'},
+    {key:'bulanan', label:'Rekap Bulanan'},
+    {key:'tahunan', label:'Rekap Tahunan'}
+  ]},
+  {key:'user', label:'User', icon:'&#128100;', subs:[
+    {key:'akun', label:'Akun'},
+    {key:'akses', label:'Kelola Akses'}
+  ]},
+  {key:'pengaturan', label:'Pengaturan', icon:'&#9881;'}
+];
+
+let route = {menu:'dashboard', sub:null};
+
+function pendingApprovalCount(){
+  const submissions = load('submissions', []);
+  return submissions.filter(s=>s.jenis!=='harian' && (s.status||'pending')==='pending').length;
+}
+function buildNav(){
+  const nav = document.getElementById('navMenu');
+  nav.innerHTML = '';
+  MENU_DEFS.forEach(m=>{
+    if(!canAccess(m.key)) return;
+    const wrap = document.createElement('div');
+    wrap.className='nav-group';
+    const item = document.createElement('div');
+    item.className = 'nav-item' + (route.menu===m.key && !m.subs ? ' active' : '');
+    const pendingCount = m.key==='approve' ? pendingApprovalCount() : 0;
+    const badgeHtml = pendingCount>0 ? `<span class="nav-badge">${pendingCount}</span>` : '';
+    item.innerHTML = `<span class="ic">${m.icon}</span><span>${m.label}</span>${badgeHtml}` + (m.subs? `<span class="nav-caret ${route.menu===m.key?'rot':''}">&#9656;</span>` : '');
+    item.onclick = ()=>{
+      if(m.subs){
+        const sub = document.getElementById('sub-'+m.key);
+        const isOpen = sub.classList.contains('open');
+        document.querySelectorAll('.nav-sub').forEach(s=>s.classList.remove('open'));
+        document.querySelectorAll('.nav-caret').forEach(c=>c.classList.remove('rot'));
+        if(!isOpen){
+          sub.classList.add('open');
+          item.querySelector('.nav-caret').classList.add('rot');
+          navigate(m.key, m.subs[0].key);
+        }
+      } else {
+        navigate(m.key, null);
+      }
+    };
+    wrap.appendChild(item);
+    if(m.subs){
+      const subWrap = document.createElement('div');
+      subWrap.className = 'nav-sub' + (route.menu===m.key?' open':'');
+      subWrap.id = 'sub-'+m.key;
+      m.subs.forEach(s=>{
+        const si = document.createElement('div');
+        si.className = 'nav-item' + (route.menu===m.key && route.sub===s.key ? ' active':'');
+        si.innerHTML = `<span>${s.label}</span>`;
+        si.onclick = (e)=>{ e.stopPropagation(); navigate(m.key, s.key); };
+        subWrap.appendChild(si);
+      });
+      wrap.appendChild(subWrap);
+    }
+    nav.appendChild(wrap);
+  });
+}
+
+function navigate(menu, sub){
+  if(!canAccess(menu)){ toast('Anda tidak memiliki akses ke menu ini'); return; }
+  route = {menu, sub};
+  document.getElementById('sidebar').classList.remove('open');
+  render();
+}
+
+function render(){
+  buildNav();
+  const titleMap = {dashboard:'Dashboard', approve:'Approve Program', waka:'Data Waka', program:'Data Program', programHarian:'Program Harian', rekap:'Rekap Program', user:'User', pengaturan:'Pengaturan'};
+  let title = titleMap[route.menu] || '';
+  if(route.sub){
+    const m = MENU_DEFS.find(x=>x.key===route.menu);
+    const s = m && m.subs ? m.subs.find(x=>x.key===route.sub) : null;
+    if(s) title = s.label;
+  }
+  document.getElementById('pageTitle').textContent = title;
+  const c = document.getElementById('content');
+  if(route.menu==='dashboard') c.innerHTML = renderDashboard();
+  else if(route.menu==='approve') c.innerHTML = renderApprovePage();
+  else if(route.menu==='waka') c.innerHTML = renderWakaPage();
+  else if(route.menu==='program') c.innerHTML = renderProgramPage();
+  else if(route.menu==='programHarian') c.innerHTML = renderProgramHarianPage();
+  else if(route.menu==='rekap') c.innerHTML = renderRekapPage(route.sub||'harian');
+  else if(route.menu==='user') c.innerHTML = renderUserPage(route.sub||'akun');
+  else if(route.menu==='pengaturan') c.innerHTML = renderSettingsPage();
+
+  const who = document.getElementById('whoBox');
+  if(session) who.innerHTML = `<b>${escapeHtml(session.username)}</b>${capitalize(session.role)}`;
+}
+
+function toggleSidebar(){ document.getElementById('sidebar').classList.toggle('open'); }
+
+/* =========================================================
+   UTIL
+========================================================= */
+function escapeHtml(s){ return (s+'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function capitalize(s){ return (s||'').charAt(0).toUpperCase()+ (s||'').slice(1); }
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function getISOWeek(d){
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = (date.getUTCDay()+6)%7;
+  date.setUTCDate(date.getUTCDate()-dayNum+3);
+  const firstThursday = new Date(Date.UTC(date.getUTCFullYear(),0,4));
+  const week = 1 + Math.round(((date-firstThursday)/86400000 - 3 + ((firstThursday.getUTCDay()+6)%7))/7);
+  return date.getUTCFullYear()+'-W'+String(week).padStart(2,'0');
+}
+function currentWeekStr(){ return getISOWeek(new Date()); }
+function currentMonthStr(){ return new Date().toISOString().slice(0,7); }
+function currentYearStr(){ return String(new Date().getFullYear()); }
+function periodKeyFor(jenis, dateInput){
+  const d = dateInput ? new Date(dateInput) : new Date();
+  if(jenis==='harian') return dateInput ? dateInput : todayStr();
+  if(jenis==='mingguan') return getISOWeek(d);
+  if(jenis==='bulanan') return (dateInput||todayStr()).slice(0,7);
+  if(jenis==='tahunan') return String(d.getFullYear());
+  return '';
+}
+function currentPeriod(jenis){
+  if(jenis==='harian') return todayStr();
+  if(jenis==='mingguan') return currentWeekStr();
+  if(jenis==='bulanan') return currentMonthStr();
+  if(jenis==='tahunan') return currentYearStr();
+}
+function jenisLabel(j){ return {harian:'Harian',mingguan:'Mingguan',bulanan:'Bulanan',tahunan:'Tahunan'}[j] || j; }
+
+/* =========================================================
+   DASHBOARD
+========================================================= */
+function renderDashboard(){
+  const isWaka = session && session.role==='waka';
+  const myWakaId = isWaka ? getMyWakaId() : null;
+  let wakas = load('wakas', []);
+  let programs = load('programs', []);
+  const submissions = load('submissions', []);
+  const jenisList = ['harian','mingguan','bulanan','tahunan'];
+
+  if(isWaka){
+    wakas = myWakaId ? wakas.filter(w=>w.id===myWakaId) : [];
+    programs = myWakaId ? programs.filter(p=>p.wakaId===myWakaId) : [];
+  }
+
+  const cards = jenisList.map(j=>{
+    const progOfJenis = programs.filter(p=>p.jenis===j);
+    const period = currentPeriod(j);
+    const expected = wakas.length * progOfJenis.length;
+    const actualPairs = new Set();
+    submissions.forEach(s=>{
+      if(s.jenis===j && s.periode===period && (!isWaka || s.wakaId===myWakaId)){ actualPairs.add(s.wakaId+'|'+s.programId); }
+    });
+    const pct = expected>0 ? Math.round((actualPairs.size/expected)*100) : 0;
+    return `
+      <div class="prog-card">
+        <div class="plabel"><span class="dot"></span> Program ${jenisLabel(j)}</div>
+        <div class="pbar-track"><div class="pbar-fill" style="width:${Math.min(pct,100)}%"></div></div>
+        <div class="pbar-meta"><span>Capaian periode berjalan</span><b>${pct}%</b></div>
+      </div>`;
+  }).join('');
+
+  return `
+    ${isWaka && !myWakaId ? `<div class="card" style="padding:16px 20px;margin-bottom:18px;border-color:var(--accent);"><span style="font-size:13.5px;color:var(--muted);">Akun Anda belum terhubung ke data waka manapun. Hubungi admin untuk mencocokkan jabatan akun dengan data waka.</span></div>` : ''}
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-label">${isWaka?'Waka':'Jumlah Waka'}</div>
+        <div class="kpi-value">${isWaka ? (wakas[0]?escapeHtml(wakas[0].nama):'-') : wakas.length}</div>
+      </div>
+      <div class="kpi-card gold">
+        <div class="kpi-label">Jumlah Program</div>
+        <div class="kpi-value">${programs.length}</div>
+      </div>
+    </div>
+    <div class="section-title"><h3>Prosentase Program &mdash; ${isWaka?'Saya':'Global'}</h3></div>
+    <div class="prog-grid">${cards}</div>
+  `;
+}
+
+/* =========================================================
+   DATA WAKA
+========================================================= */
+function renderWakaPage(){
+  const wakas = load('wakas', []);
+  const rows = wakas.map((w,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td>${escapeHtml(w.nama)}</td>
+      <td>${escapeHtml(w.jabatan)}</td>
+      <td>${escapeHtml(w.tahun)}</td>
+      <td class="row-actions">
+        <button class="btn btn-ghost btn-sm" onclick="openWakaModal('${w.id}')">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteWaka('${w.id}')">Hapus</button>
+      </td>
+    </tr>`).join('');
+  return `
+    <div class="card">
+      <div class="card-head">
+        <div><h3>Data Wakil Kepala Sekolah</h3><div class="hint">Daftar waka beserta jabatan dan tahun menjabat.</div></div>
+        <button class="btn btn-primary" onclick="openWakaModal()">+ Tambah Waka</button>
+      </div>
+      <div class="tbl-wrap">
+      <table>
+        <thead><tr><th style="width:50px;">No</th><th style="width:230px;">Nama</th><th>Jabatan</th><th style="width:140px;">Tahun Menjabat</th><th style="width:150px;">Aksi</th></tr></thead>
+        <tbody>${rows || `<tr class="empty-row"><td colspan="5">Belum ada data waka.</td></tr>`}</tbody>
+      </table>
+      </div>
+    </div>
+  `;
+}
+function openWakaModal(id){
+  const wakas = load('wakas', []);
+  const jabatanList = load('jabatanList', []);
+  const w = id ? wakas.find(x=>x.id===id) : null;
+  const currentNotInList = w && w.jabatan && !jabatanList.find(j=>j.nama===w.jabatan);
+  const body = `
+    <div class="field"><label>Nama</label><input type="text" id="fWakaNama" value="${w?escapeHtml(w.nama):''}" placeholder="Nama lengkap beserta gelar"></div>
+    <div class="field"><label>Jabatan</label>
+      ${jabatanList.length===0 ? `<div style="font-size:12.5px;color:var(--muted);padding:9px 0;">Belum ada data jabatan. Tambahkan dulu di menu <b>Pengaturan &rsaquo; Kelola Jabatan</b>.</div>` : `
+      <select id="fWakaJabatan">
+        <option value="">- Pilih Jabatan -</option>
+        ${jabatanList.map(j=>`<option value="${escapeHtml(j.nama)}" ${w&&w.jabatan===j.nama?'selected':''}>${escapeHtml(j.nama)}</option>`).join('')}
+        ${currentNotInList ? `<option value="${escapeHtml(w.jabatan)}" selected>${escapeHtml(w.jabatan)} (lama)</option>` : ''}
+      </select>`}
+    </div>
+    <div class="field"><label>Tahun Menjabat</label><input type="text" id="fWakaTahun" value="${w?escapeHtml(w.tahun):''}" placeholder="Contoh: 2025"></div>
+  `;
+  openModal(id?'Edit Data Waka':'Tambah Data Waka', body, ()=>{
+    const nama = document.getElementById('fWakaNama').value.trim();
+    const jabatanEl = document.getElementById('fWakaJabatan');
+    const jabatan = jabatanEl ? jabatanEl.value.trim() : '';
+    const tahun = document.getElementById('fWakaTahun').value.trim();
+    if(!nama || !jabatan || !tahun){ toast('Semua kolom wajib diisi'); return false; }
+    const list = load('wakas', []);
+    if(w){
+      const idx = list.findIndex(x=>x.id===id);
+      list[idx] = {...list[idx], nama, jabatan, tahun};
+    } else {
+      list.push({id:uid(), nama, jabatan, tahun});
+    }
+    save('wakas', list);
+    render();
+    toast('Data waka disimpan');
+    return true;
+  });
+}
+function deleteWaka(id){
+  confirmModal('Hapus data waka ini? Rekap terkait waka ini tidak akan ditampilkan lagi.', ()=>{
+    save('wakas', load('wakas', []).filter(x=>x.id!==id));
+    render();
+    toast('Data waka dihapus');
+  });
+}
+
+/* =========================================================
+   DATA PROGRAM
+========================================================= */
+function getCurrentSubmissionForProgram(programId, jenis){
+  const submissions = load('submissions', []);
+  const period = currentPeriod(jenis);
+  const matches = submissions.filter(s=>s.programId===programId && s.periode===period);
+  if(matches.length===0) return null;
+  matches.sort((a,b)=> new Date(b.diajukanPada) - new Date(a.diajukanPada));
+  return matches[0];
+}
+function renderProgramPage(){
+  const isWaka = session && session.role==='waka';
+  const isKepsek = session && session.role==='kepala sekolah';
+  const myWakaId = isWaka ? getMyWakaId() : null;
+  let programs = load('programs', []).filter(p=>p.jenis!=='harian');
+  const wakas = load('wakas', []);
+  const wakaMap = {};
+  wakas.forEach(w=>wakaMap[w.id]=w.nama);
+  if(isWaka) programs = programs.filter(p=>p.wakaId===myWakaId);
+  const rows = programs.map((p,i)=>{
+    const current = getCurrentSubmissionForProgram(p.id, p.jenis);
+    let ajukanBtn;
+    if(isKepsek){
+      if(!current) ajukanBtn = `<span style="color:var(--muted);font-size:12.5px;">Belum diajukan</span>`;
+      else if(current.status==='disetujui') ajukanBtn = `<span class="tag tag-bulanan">&#10003; Selesai</span>`;
+      else if(current.status==='ditolak') ajukanBtn = `<span class="tag tag-tahunan">Ditolak</span>`;
+      else ajukanBtn = `<span class="tag" style="background:var(--surface-2);color:var(--muted);">Menunggu</span>`;
+    } else if(!current){
+      ajukanBtn = `<button class="btn btn-accent btn-sm" onclick="openAjukanModal('${p.id}')">Ajukan Program</button>`;
+    } else if(current.status==='disetujui'){
+      ajukanBtn = `<button class="btn btn-sm" style="background:var(--success-soft);color:var(--success);cursor:default;" disabled>&#10003; Selesai</button>`;
+    } else if(current.status==='ditolak'){
+      ajukanBtn = `<button class="btn btn-sm" style="background:var(--danger-soft);color:var(--danger);" onclick="openAjukanModal('${p.id}')" title="Ditolak, klik untuk ajukan ulang">Ditolak &mdash; Ajukan Ulang</button>`;
+    } else {
+      ajukanBtn = `<button class="btn btn-sm" style="background:var(--surface-2);color:var(--muted);cursor:default;" disabled>Menunggu</button>`;
+    }
+    const isLocked = current && (current.status==='disetujui' || current.status==='pending');
+    return `
+    <tr>
+      <td>${i+1}</td>
+      <td>${escapeHtml(p.nama)}</td>
+      <td>${escapeHtml(wakaMap[p.wakaId] || '-')}</td>
+      <td><span class="tag tag-${p.jenis}">${jenisLabel(p.jenis)}</span></td>
+      <td class="row-actions">
+        ${ajukanBtn}
+        ${isKepsek || isLocked ? '' : `<button class="btn btn-ghost btn-sm" onclick="openProgramModal('${p.id}')">Edit</button>`}
+        ${isKepsek ? '' : `<button class="btn btn-danger btn-sm" onclick="deleteProgram('${p.id}')">Hapus</button>`}
+      </td>
+    </tr>`;
+  }).join('');
+  return `
+    ${isWaka && !myWakaId ? `<div class="card" style="padding:16px 20px;margin-bottom:18px;border-color:var(--accent);"><span style="font-size:13.5px;color:var(--muted);">Akun Anda belum terhubung ke data waka manapun, sehingga belum ada program yang bisa ditampilkan. Hubungi admin.</span></div>` : ''}
+    <div class="card">
+      <div class="card-head">
+        <div><h3>Data Program Kerja</h3><div class="hint">${isWaka? 'Program kerja yang menjadi tanggung jawab Anda.' : (isKepsek ? 'Pantau daftar program dan status pelaksanaannya.' : 'Kelola daftar program dan ajukan pelaksanaan program oleh waka.')}</div></div>
+        <div class="toolbar">
+          ${isWaka || isKepsek ? '' : `
+          <button class="btn btn-ghost" onclick="exportProgramXLSX('program')">&#8615; Export</button>
+          <input type="file" id="importProgramInput" accept=".xlsx,.xls" style="display:none;" onchange="importProgramXLSX(this, 'program')">
+          <button class="btn btn-ghost" onclick="document.getElementById('importProgramInput').click()">&#8613; Import</button>
+          <button class="btn btn-primary" onclick="openProgramModal()">+ Tambah Program</button>`}
+        </div>
+      </div>
+      <div class="tbl-wrap">
+      <table>
+        <thead><tr><th style="width:50px;">No</th><th style="width:230px;">Nama Program</th><th style="width:170px;">Waka</th><th style="width:120px;">Jenis</th><th style="width:290px;">Aksi</th></tr></thead>
+        <tbody>${rows || `<tr class="empty-row"><td colspan="5">Belum ada data program.</td></tr>`}</tbody>
+      </table>
+      </div>
+    </div>
+  `;
+}
+function renderProgramHarianPage(){
+  const isWaka = session && session.role==='waka';
+  const myWakaId = isWaka ? getMyWakaId() : null;
+  const selectedDate = window._harianFilterDate || todayStr();
+  let programs = load('programs', []).filter(p=>p.jenis==='harian');
+  const wakas = load('wakas', []);
+  const submissions = load('submissions', []);
+  const wakaMap = {};
+  wakas.forEach(w=>wakaMap[w.id]=w.nama);
+  if(isWaka) programs = programs.filter(p=>p.wakaId===myWakaId);
+  const rows = programs.map((p,i)=>{
+    const current = submissions.find(s=>s.programId===p.id && s.periode===selectedDate);
+    const isChecked = !!current && current.status!=='ditolak';
+    let statusLabel = '';
+    if(current){
+      if(current.status==='disetujui') statusLabel = `<span class="tag tag-bulanan">Selesai</span>`;
+      else if(current.status==='ditolak') statusLabel = `<span class="tag tag-tahunan">Ditolak</span>`;
+    }
+    const hasPelaksana = !!p.wakaId;
+    const waktu = isChecked && current.diajukanPada ? formatDateTime(current.diajukanPada) : '<span style="color:var(--muted);">-</span>';
+    let ketepatan = '<span style="color:var(--muted);">-</span>';
+    if(isChecked && current.diajukanPada){
+      const status = getKetepatanWaktu(current.periode, current.diajukanPada);
+      ketepatan = status==='tepat' ? `<span class="tag tag-bulanan">Tepat Waktu</span>` : `<span class="tag tag-tahunan">Telat</span>`;
+    }
+    return `
+    <tr>
+      <td>${i+1}</td>
+      <td>${escapeHtml(p.nama)}</td>
+      <td>${escapeHtml(wakaMap[p.wakaId] || '-')}</td>
+      <td>
+        <label style="display:flex;align-items:center;gap:8px;cursor:${hasPelaksana?'pointer':'not-allowed'};">
+          <input type="checkbox" class="chk" ${isChecked?'checked':''} ${!hasPelaksana?'disabled':''} onchange="toggleHarianSelesai('${p.id}', this.checked)">
+          ${statusLabel}
+        </label>
+      </td>
+      <td style="font-size:13px;">${waktu}</td>
+      <td>${ketepatan}</td>
+      <td class="row-actions">
+        <button class="btn btn-ghost btn-sm" onclick="openProgramModal('${p.id}')">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteProgram('${p.id}')">Hapus</button>
+      </td>
+    </tr>`;
+  }).join('');
+  return `
+    ${isWaka && !myWakaId ? `<div class="card" style="padding:16px 20px;margin-bottom:18px;border-color:var(--accent);"><span style="font-size:13.5px;color:var(--muted);">Akun Anda belum terhubung ke data waka manapun, sehingga belum ada program harian yang bisa ditampilkan. Hubungi admin.</span></div>` : ''}
+    <div class="card">
+      <div class="card-head">
+        <div><h3>Program Harian</h3><div class="hint">${isWaka? 'Centang tugas yang sudah selesai dikerjakan pada tanggal terpilih.' : 'Seluruh program harian dari semua waka.'}</div></div>
+        <div class="toolbar">
+          <label style="font-size:12.5px;color:var(--muted);margin-right:2px;">Tanggal:</label>
+          <input type="date" value="${selectedDate}" onchange="onHarianDateChange(this.value)">
+          ${selectedDate!==todayStr() ? `<button class="btn btn-ghost btn-sm" onclick="onHarianDateChange('${todayStr()}')">Hari Ini</button>` : ''}
+          ${isWaka ? '' : `
+          <button class="btn btn-ghost" onclick="exportProgramXLSX('harian')">&#8615; Export</button>
+          <input type="file" id="importHarianInput" accept=".xlsx,.xls" style="display:none;" onchange="importProgramXLSX(this, 'harian')">
+          <button class="btn btn-ghost" onclick="document.getElementById('importHarianInput').click()">&#8613; Import</button>
+          <button class="btn btn-primary" onclick="openProgramModal(null,'harian')">+ Tambah Program Harian</button>`}
+        </div>
+      </div>
+      <div class="tbl-wrap">
+      <table>
+        <thead><tr><th style="width:50px;">No</th><th style="width:190px;">Nama Program</th><th style="width:140px;">Waka</th><th style="width:140px;">Selesai</th><th style="width:160px;">Tanggal &amp; Jam</th><th style="width:130px;">Status</th><th style="width:150px;">Aksi</th></tr></thead>
+        <tbody>${rows || `<tr class="empty-row"><td colspan="7">Belum ada program harian.</td></tr>`}</tbody>
+      </table>
+      </div>
+    </div>
+  `;
+}
+function onHarianDateChange(val){
+  window._harianFilterDate = val;
+  render();
+}
+function getKetepatanWaktu(periode, diajukanPadaIso){
+  if(!periode || !diajukanPadaIso) return null;
+  const parts = periode.split('-').map(Number);
+  const y = parts[0], m = parts[1], d = parts[2];
+  if(!y || !m || !d) return null;
+  const deadline = new Date(y, m-1, d+1, 18, 0, 0, 0);
+  const checkedAt = new Date(diajukanPadaIso);
+  if(isNaN(checkedAt.getTime())) return null;
+  return checkedAt.getTime() <= deadline.getTime() ? 'tepat' : 'telat';
+}
+function formatDateTime(iso){
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '-';
+  const bulan = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  const tgl = d.getDate();
+  const bln = bulan[d.getMonth()];
+  const thn = d.getFullYear();
+  const jam = String(d.getHours()).padStart(2,'0');
+  const menit = String(d.getMinutes()).padStart(2,'0');
+  return `${tgl} ${bln} ${thn}, ${jam}:${menit}`;
+}
+function formatDateOnly(iso){
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '-';
+  const bulan = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  return `${d.getDate()} ${bulan[d.getMonth()]} ${d.getFullYear()}`;
+}
+function toggleHarianSelesai(programId, checked){
+  const programs = load('programs', []);
+  const p = programs.find(x=>x.id===programId);
+  if(!p) return;
+  const pelaksana = load('wakas', []).find(w=>w.id===p.wakaId);
+  if(!pelaksana){ toast('Tentukan Waka Penanggung Jawab program ini terlebih dahulu lewat tombol Edit'); render(); return; }
+  const period = window._harianFilterDate || todayStr();
+  const list = load('submissions', []);
+  const idx = list.findIndex(s=>s.programId===programId && s.periode===period);
+  if(checked){
+    if(idx>=0){
+      list[idx] = {...list[idx], status:'disetujui', diajukanPada:new Date().toISOString(), approvedBy: session?session.username:'', approvedAt:new Date().toISOString()};
+    } else {
+      list.push({id:uid(), programId:p.id, programNama:p.nama, jenis:p.jenis, wakaId:pelaksana.id, periode:period, keterangan:'', foto:'', diajukanPada:new Date().toISOString(), status:'disetujui', catatanApproval:'', approvedBy: session?session.username:'', approvedAt:new Date().toISOString()});
+    }
+    save('submissions', list);
+    toast('Program ditandai selesai');
+  } else {
+    if(idx>=0){
+      list.splice(idx,1);
+      save('submissions', list);
+      toast('Tanda selesai dibatalkan');
+    }
+  }
+  render();
+}
+function exportProgramXLSX(mode){
+  const wakas = load('wakas', []);
+  const wakaMap = {};
+  wakas.forEach(w=>wakaMap[w.id]=w.nama);
+  let programs = load('programs', []);
+  let header, rows;
+  if(mode==='harian'){
+    programs = programs.filter(p=>p.jenis==='harian');
+    header = ['Nama Program','Waka'];
+    rows = programs.map(p=>[p.nama, wakaMap[p.wakaId]||'']);
+  } else {
+    programs = programs.filter(p=>p.jenis!=='harian');
+    header = ['Nama Program','Jenis','Waka'];
+    rows = programs.map(p=>[p.nama, p.jenis, wakaMap[p.wakaId]||'']);
+  }
+  if(programs.length===0){ toast('Tidak ada data untuk diexport'); return; }
+  if(typeof XLSX==='undefined'){ toast('Gagal memuat modul Excel, coba muat ulang halaman'); return; }
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, mode==='harian' ? 'Program Harian' : 'Data Program');
+  XLSX.writeFile(wb, (mode==='harian' ? 'program-harian' : 'data-program') + '-' + todayStr() + '.xlsx');
+  toast('Export berhasil, ' + programs.length + ' program diunduh');
+}
+function importProgramXLSX(input, mode){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  if(typeof XLSX==='undefined'){ toast('Gagal memuat modul Excel, coba muat ulang halaman'); input.value=''; return; }
+  const reader = new FileReader();
+  reader.onload = function(e){
+    let rows;
+    try{
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    }catch(err){
+      toast('Gagal membaca file Excel'); input.value=''; return;
+    }
+    if(!rows || rows.length<2){ toast('File Excel kosong atau tidak valid'); input.value=''; return; }
+    const wakas = load('wakas', []);
+    const wakaByName = {};
+    wakas.forEach(w=>{ wakaByName[w.nama.trim().toLowerCase()] = w.id; });
+    const list = load('programs', []);
+    let added = 0, skipped = 0, unmatchedWaka = 0;
+    for(let i=1;i<rows.length;i++){
+      const cols = rows[i].map(v=>String(v==null?'':v).trim());
+      const nama = (cols[0]||'').trim();
+      if(!nama){ skipped++; continue; }
+      let jenis, wakaNama;
+      if(mode==='harian'){
+        jenis = 'harian';
+        wakaNama = (cols[1]||'').trim();
+      } else {
+        jenis = (cols[1]||'').trim().toLowerCase();
+        if(!['mingguan','bulanan','tahunan'].includes(jenis)) jenis = 'mingguan';
+        wakaNama = (cols[2]||'').trim();
+      }
+      let wakaId = '';
+      if(wakaNama){
+        const found = wakaByName[wakaNama.toLowerCase()];
+        if(found) wakaId = found; else unmatchedWaka++;
+      }
+      list.push({id:uid(), nama, jenis, wakaId});
+      added++;
+    }
+    save('programs', list);
+    render();
+    let msg = added + ' program berhasil diimpor';
+    if(unmatchedWaka>0) msg += ', ' + unmatchedWaka + ' nama waka tidak ditemukan';
+    if(skipped>0) msg += ', ' + skipped + ' baris dilewati';
+    toast(msg);
+  };
+  reader.readAsArrayBuffer(file);
+  input.value = '';
+}
+function openProgramModal(id, defaultJenis){
+  const programs = load('programs', []);
+  const wakas = load('wakas', []);
+  const p = id ? programs.find(x=>x.id===id) : null;
+  const isHarianContext = defaultJenis==='harian' || (p && p.jenis==='harian');
+  const jenisFieldHtml = isHarianContext
+    ? `<div style="padding:9px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-size:14px;font-weight:600;">${jenisLabel('harian')}</div>
+       <input type="hidden" id="fProgJenis" value="harian">
+       <div style="font-size:12px;color:var(--muted);margin-top:6px;">Jenis Harian hanya bisa diatur lewat menu <b>Program Harian</b>.</div>`
+    : `<select id="fProgJenis">
+        ${['mingguan','bulanan','tahunan'].map(j=>`<option value="${j}" ${p&&p.jenis===j?'selected':''}>${jenisLabel(j)}</option>`).join('')}
+      </select>`;
+  const body = `
+    <div class="field"><label>Nama Program</label><input type="text" id="fProgNama" value="${p?escapeHtml(p.nama):''}" placeholder="Contoh: Supervisi Kelas"></div>
+    <div class="field"><label>Waka Penanggung Jawab</label>
+      <select id="fProgWaka">
+        <option value="">- Belum ditentukan -</option>
+        ${wakas.map(w=>`<option value="${w.id}" ${p&&p.wakaId===w.id?'selected':''}>${escapeHtml(w.nama)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Jenis Program</label>
+      ${jenisFieldHtml}
+    </div>
+  `;
+  openModal(id?'Edit Program':'Tambah Program', body, ()=>{
+    const nama = document.getElementById('fProgNama').value.trim();
+    const jenis = document.getElementById('fProgJenis').value;
+    const wakaId = document.getElementById('fProgWaka').value;
+    if(!nama){ toast('Nama program wajib diisi'); return false; }
+    const list = load('programs', []);
+    if(p){
+      const idx = list.findIndex(x=>x.id===id);
+      list[idx] = {...list[idx], nama, jenis, wakaId};
+    } else {
+      list.push({id:uid(), nama, jenis, wakaId});
+    }
+    save('programs', list);
+    render();
+    toast('Data program disimpan');
+    return true;
+  });
+}
+function deleteProgram(id){
+  confirmModal('Hapus program ini beserta seluruh riwayat pengajuannya?', ()=>{
+    save('programs', load('programs', []).filter(x=>x.id!==id));
+    save('submissions', load('submissions', []).filter(x=>x.programId!==id));
+    render();
+    toast('Program dihapus');
+  });
+}
+function openAjukanModal(programId){
+  const programs = load('programs', []);
+  const wakas = load('wakas', []);
+  const p = programs.find(x=>x.id===programId);
+  if(!p) return;
+  const pelaksana = wakas.find(w=>w.id===p.wakaId);
+  if(!pelaksana){ toast('Tentukan Waka Penanggung Jawab program ini terlebih dahulu lewat tombol Edit'); return; }
+  const dateField = `<input type="date" id="fAjukanTanggal" value="${todayStr()}">`;
+
+  window._fotoBase64 = '';
+  const body = `
+    <p style="font-size:13.5px;color:var(--muted);margin:0 0 16px;">Mengajukan pelaksanaan program <b style="color:var(--ink);">${escapeHtml(p.nama)}</b> &mdash; <span class="tag tag-${p.jenis}">${jenisLabel(p.jenis)}</span></p>
+    <div class="field"><label>Waka Pelaksana</label>
+      <div style="padding:9px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface-2);font-size:14px;font-weight:600;">${escapeHtml(pelaksana.nama)}</div>
+    </div>
+    <div class="field"><label>Tanggal Periode</label>${dateField}</div>
+    <div class="field"><label>Keterangan</label><textarea id="fAjukanKet" rows="3" placeholder="Catatan pelaksanaan (opsional)"></textarea></div>
+    <div class="field"><label>Foto Bukti Pelaksanaan</label>
+      <input type="file" id="fAjukanFoto" accept="image/*" onchange="onFotoInputChange(this, 'fAjukanPreview')">
+      <img id="fAjukanPreview" style="display:none;max-width:100%;margin-top:10px;border-radius:8px;border:1px solid var(--line);">
+    </div>
+  `;
+  openModal('Ajukan Program', body, ()=>{
+    const wakaId = pelaksana.id;
+    const ket = document.getElementById('fAjukanKet').value.trim();
+    const rawDate = document.getElementById('fAjukanTanggal').value;
+    if(!rawDate){ toast('Tanggal wajib diisi'); return false; }
+    let periode = '';
+    if(p.jenis==='harian') periode = rawDate;
+    else if(p.jenis==='mingguan') periode = getISOWeek(new Date(rawDate));
+    else if(p.jenis==='bulanan') periode = rawDate.slice(0,7);
+    else if(p.jenis==='tahunan') periode = rawDate.slice(0,4);
+    const list = load('submissions', []);
+    list.push({id:uid(), programId:p.id, programNama:p.nama, jenis:p.jenis, wakaId, periode, keterangan:ket, foto:window._fotoBase64||'', diajukanPada:new Date().toISOString(), status:'pending', catatanApproval:'', approvedBy:'', approvedAt:''});
+    save('submissions', list);
+    render();
+    toast('Program berhasil diajukan');
+    return true;
+  });
+}
+function onFotoInputChange(input, previewId){
+  const file = input.files && input.files[0];
+  const preview = document.getElementById(previewId);
+  if(!file){ window._fotoBase64 = ''; if(preview){ preview.style.display='none'; preview.src=''; } return; }
+  if(!file.type.startsWith('image/')){ toast('File harus berupa gambar'); input.value=''; return; }
+  const reader = new FileReader();
+  reader.onload = function(e){
+    window._fotoBase64 = e.target.result;
+    if(preview){ preview.src = e.target.result; preview.style.display='block'; }
+  };
+  reader.readAsDataURL(file);
+}
+
+function openEditSubmissionModal(subId){
+  const list = load('submissions', []);
+  const s = list.find(x=>x.id===subId);
+  if(!s) return;
+  const wakas = load('wakas', []);
+  const isHarian = s.jenis==='harian', isMingguan = s.jenis==='mingguan', isBulanan = s.jenis==='bulanan', isTahunan = s.jenis==='tahunan';
+  let dateField = '';
+  if(isHarian) dateField = `<input type="date" id="fEditTanggal" value="${s.periode}">`;
+  else if(isMingguan) dateField = `<input type="week" id="fEditTanggal" value="${s.periode}">`;
+  else if(isBulanan) dateField = `<input type="month" id="fEditTanggal" value="${s.periode}">`;
+  else if(isTahunan) dateField = `<input type="number" id="fEditTanggal" value="${s.periode}" min="2000" max="2100">`;
+  window._fotoBase64 = s.foto || '';
+  const body = `
+    <p style="font-size:13.5px;color:var(--muted);margin:0 0 16px;">Mengedit pengajuan <b style="color:var(--ink);">${escapeHtml(s.programNama)}</b> &mdash; <span class="tag tag-${s.jenis}">${jenisLabel(s.jenis)}</span></p>
+    <div class="field"><label>Waka Pelaksana</label>
+      <select id="fEditWaka">${wakas.map(w=>`<option value="${w.id}" ${w.id===s.wakaId?'selected':''}>${escapeHtml(w.nama)}</option>`).join('')}</select>
+    </div>
+    <div class="field"><label>Periode</label>${dateField}</div>
+    <div class="field"><label>Keterangan</label><textarea id="fEditKet" rows="3">${escapeHtml(s.keterangan||'')}</textarea></div>
+    <div class="field"><label>Foto Bukti Pelaksanaan</label>
+      <input type="file" id="fEditFoto" accept="image/*" onchange="onFotoInputChange(this, 'fEditPreview')">
+      <img id="fEditPreview" style="${s.foto?'display:block;':'display:none;'}max-width:100%;margin-top:10px;border-radius:8px;border:1px solid var(--line);" src="${s.foto||''}">
+    </div>
+  `;
+  openModal('Edit Pengajuan Program', body, ()=>{
+    const wakaId = document.getElementById('fEditWaka').value;
+    const ket = document.getElementById('fEditKet').value.trim();
+    const rawDate = document.getElementById('fEditTanggal').value;
+    if(!rawDate){ toast('Periode wajib diisi'); return false; }
+    const idx = list.findIndex(x=>x.id===subId);
+    list[idx] = {...list[idx], wakaId, periode:String(rawDate), keterangan:ket, foto:window._fotoBase64||''};
+    save('submissions', list);
+    render();
+    toast('Pengajuan diperbarui');
+    return true;
+  });
+}
+
+function submissionStatusTag(status){
+  if(status==='disetujui') return `<span class="tag tag-bulanan">Disetujui</span>`;
+  if(status==='ditolak') return `<span class="tag tag-tahunan">Ditolak</span>`;
+  return `<span class="tag" style="background:var(--surface-2);color:var(--muted);">Menunggu</span>`;
+}
+
+/* =========================================================
+   APPROVE PROGRAM
+========================================================= */
+function renderApprovePage(){
+  const submissions = load('submissions', []);
+  const wakas = load('wakas', []);
+  const filter = window._approveFilter || 'semua';
+  const isAdmin = session && session.role==='admin';
+  window._approveSelected = window._approveSelected || new Set();
+  const wakaMap = {};
+  wakas.forEach(w=>wakaMap[w.id]=w.nama);
+
+  const filtered = submissions.filter(s=> s.jenis!=='harian' && (filter==='semua' ? true : s.status===filter));
+  const sorted = filtered.slice().sort((a,b)=> new Date(b.diajukanPada) - new Date(a.diajukanPada));
+  const visibleIds = sorted.map(s=>s.id);
+  const selectedCount = visibleIds.filter(id=>window._approveSelected.has(id)).length;
+  const allChecked = visibleIds.length>0 && selectedCount===visibleIds.length;
+
+  const rows = sorted.map((s,i)=>{
+    const catatan = s.status!=='pending' ? `<div class="pl-meta" style="margin-top:4px;">Catatan: ${escapeHtml(s.catatanApproval||'-')}</div>` : '';
+    const checkboxTd = isAdmin ? `<td><input type="checkbox" class="chk" onchange="toggleApproveSelect('${s.id}', this.checked)" ${window._approveSelected.has(s.id)?'checked':''}></td>` : '';
+    return `
+    <tr>
+      ${checkboxTd}
+      <td>${i+1}</td>
+      <td>${escapeHtml(s.programNama)}<br><span class="tag tag-${s.jenis}" style="margin-top:4px;">${jenisLabel(s.jenis)}</span></td>
+      <td>${escapeHtml(wakaMap[s.wakaId]||'(waka dihapus)')}</td>
+      <td>${formatDateOnly(s.diajukanPada)}</td>
+      <td>${submissionStatusTag(s.status||'pending')}${catatan}</td>
+      <td class="row-actions">
+        ${s.foto ? `<button class="btn btn-ghost btn-sm" onclick="openFotoDetail('${s.id}')">&#128247; Foto</button>` : ''}
+        <button class="btn btn-primary btn-sm" onclick="openApproveDecisionModal('${s.id}','disetujui')">Setujui</button>
+        <button class="btn btn-danger btn-sm" onclick="openApproveDecisionModal('${s.id}','ditolak')">Tolak</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const filterOpts = [['semua','Semua'],['pending','Menunggu'],['disetujui','Disetujui'],['ditolak','Ditolak']];
+  const checkboxTh = isAdmin ? `<th style="width:36px;"><input type="checkbox" class="chk" onchange="toggleApproveSelectAll(this.checked)" ${allChecked?'checked':''}></th>` : '';
+  const colCount = isAdmin ? 7 : 6;
+
+  const adminToolbar = (isAdmin && selectedCount>0) ? `
+    <div class="toolbar">
+      <span style="font-size:12.5px;color:var(--muted);">${selectedCount} dipilih</span>
+      <button class="btn btn-danger btn-sm" onclick="deleteSelectedApprovals()">Hapus Terpilih</button>
+    </div>` : '';
+
+  return `
+    <div class="card">
+      <div class="card-head">
+        <div><h3>Approve Program</h3><div class="hint">Tinjau, setujui, tolak, atau edit setiap pengajuan program yang masuk.</div></div>
+        <div class="toolbar">
+          <select id="approveFilterSelect" onchange="onApproveFilterChange(this.value)">
+            ${filterOpts.map(([v,l])=>`<option value="${v}" ${filter===v?'selected':''}>${l}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      ${adminToolbar ? `<div class="card-head" style="border-top:1px solid var(--line);">${adminToolbar}</div>` : ''}
+      <div class="tbl-wrap">
+      <table>
+        <thead><tr>${checkboxTh}<th style="width:50px;">No</th><th style="width:220px;">Program</th><th style="width:170px;">Nama Waka</th><th style="width:130px;">Tanggal</th><th style="width:220px;">Status</th><th style="width:220px;">Aksi</th></tr></thead>
+        <tbody>${rows || `<tr class="empty-row"><td colspan="${colCount}">Belum ada program yang diajukan.</td></tr>`}</tbody>
+      </table>
+      </div>
+    </div>
+  `;
+}
+function openFotoDetail(subId){
+  const s = load('submissions', []).find(x=>x.id===subId);
+  if(!s || !s.foto) return;
+  openModal(`Foto &mdash; ${escapeHtml(s.programNama)}`, `<img src="${s.foto}" style="max-width:100%;border-radius:8px;">`, null, true);
+}
+function toggleApproveSelect(id, checked){
+  window._approveSelected = window._approveSelected || new Set();
+  if(checked) window._approveSelected.add(id); else window._approveSelected.delete(id);
+  render();
+}
+function toggleApproveSelectAll(checked){
+  const submissions = load('submissions', []);
+  const filter = window._approveFilter || 'semua';
+  const filtered = submissions.filter(s=> filter==='semua' ? true : s.status===filter);
+  window._approveSelected = window._approveSelected || new Set();
+  if(checked) filtered.forEach(s=>window._approveSelected.add(s.id));
+  else filtered.forEach(s=>window._approveSelected.delete(s.id));
+  render();
+}
+function deleteSelectedApprovals(){
+  const selected = window._approveSelected || new Set();
+  if(selected.size===0) return;
+  confirmModal(`Hapus ${selected.size} pengajuan program yang dipilih? Tindakan ini tidak dapat dibatalkan.`, ()=>{
+    save('submissions', load('submissions', []).filter(s=>!selected.has(s.id)));
+    window._approveSelected = new Set();
+    render();
+    toast('Pengajuan terpilih dihapus');
+  });
+}
+function onApproveFilterChange(val){
+  window._approveFilter = val;
+  render();
+}
+function openApproveDecisionModal(subId, decision){
+  const list = load('submissions', []);
+  const s = list.find(x=>x.id===subId);
+  if(!s) return;
+  const isApprove = decision==='disetujui';
+  const body = `
+    <p style="font-size:13.5px;color:var(--muted);margin:0 0 16px;">${isApprove?'Menyetujui':'Menolak'} pengajuan <b style="color:var(--ink);">${escapeHtml(s.programNama)}</b> untuk periode <b style="color:var(--ink);">${escapeHtml(s.periode)}</b>.</p>
+    <div class="field"><label>Catatan ${isApprove?'Persetujuan':'Penolakan'}</label><textarea id="fApproveCatatan" rows="3" placeholder="Tulis catatan, misalnya bukti pelaksanaan atau alasan penolakan">${escapeHtml(s.catatanApproval||'')}</textarea></div>
+  `;
+  openModal(isApprove?'Setujui Program':'Tolak Program', body, ()=>{
+    const catatan = document.getElementById('fApproveCatatan').value.trim();
+    const idx = list.findIndex(x=>x.id===subId);
+    list[idx] = {...list[idx], status:decision, catatanApproval:catatan, approvedBy: session?session.username:'', approvedAt:new Date().toISOString()};
+    save('submissions', list);
+    render();
+    toast(isApprove?'Program disetujui':'Program ditolak');
+    return true;
+  });
+}
+
+/* =========================================================
+   REKAP PROGRAM
+========================================================= */
+function renderRekapPage(sub){
+  const jenis = sub;
+  const isWaka = session && session.role==='waka';
+  const myWakaId = isWaka ? getMyWakaId() : null;
+  let wakas = load('wakas', []);
+  const programs = load('programs', []);
+  const submissions = load('submissions', []);
+  if(isWaka) wakas = myWakaId ? wakas.filter(w=>w.id===myWakaId) : [];
+  const progOfJenis = programs.filter(p=>p.jenis===jenis);
+  const totalProg = progOfJenis.length;
+
+  const periodInputHtml = {
+    harian: `<input type="date" id="rekapPeriod" value="${window._rekapPeriod && window._rekapPeriod[jenis] || todayStr()}" onchange="onRekapPeriodChange('${jenis}', this.value)">`,
+    mingguan: `<input type="week" id="rekapPeriod" value="${window._rekapPeriod && window._rekapPeriod[jenis] || currentWeekStr()}" onchange="onRekapPeriodChange('${jenis}', this.value)">`,
+    bulanan: `<input type="month" id="rekapPeriod" value="${window._rekapPeriod && window._rekapPeriod[jenis] || currentMonthStr()}" onchange="onRekapPeriodChange('${jenis}', this.value)">`,
+    tahunan: `<input type="number" id="rekapPeriod" style="width:110px;" value="${window._rekapPeriod && window._rekapPeriod[jenis] || currentYearStr()}" onchange="onRekapPeriodChange('${jenis}', this.value)">`,
+  }[jenis];
+
+  window._rekapPeriod = window._rekapPeriod || {};
+  const activePeriod = window._rekapPeriod[jenis] || currentPeriod(jenis);
+
+  const rows = wakas.map((w,i)=>{
+    const myPrograms = progOfJenis.filter(p=>p.wakaId===w.id);
+    const jumlahProgram = myPrograms.length;
+    const matched = submissions.filter(s=>s.jenis===jenis && s.wakaId===w.id && s.periode===activePeriod);
+    const selesai = matched.filter(m=>m.status==='disetujui');
+    const jumlahSelesai = selesai.length;
+    const pct = jumlahProgram>0 ? Math.round((jumlahSelesai/jumlahProgram)*100) : 0;
+    const pctColor = pct>=100 ? 'var(--success)' : pct>=50 ? 'var(--accent)' : pct>0 ? 'var(--danger)' : 'var(--muted)';
+    return `
+      <tr>
+        <td>${i+1}</td>
+        <td>${escapeHtml(w.nama)}</td>
+        <td>${escapeHtml(w.jabatan||'-')}</td>
+        <td>${jumlahProgram} program</td>
+        <td>${jumlahSelesai>0 ? `<button class="link-count" onclick='openRekapDetail(${JSON.stringify(selesai.map(m=>m.id))}, "${escapeHtml(w.nama)}")'>${jumlahSelesai} program</button>` : `<span style="color:var(--muted);">0 program</span>`}</td>
+        <td>
+          <span class="pct-pill" style="color:${pctColor};">${pct}%<span class="pct-track"><span class="pct-fill" style="width:${Math.min(pct,100)}%;background:${pctColor} !important;"></span></span></span>
+        </td>
+      </tr>`;
+  }).join('');
+
+  const subtabs = ['harian','mingguan','bulanan','tahunan'].map(j=>`
+    <div class="subtab ${j===jenis?'active':''}" onclick="navigate('rekap','${j}')" style="cursor:pointer;">${jenisLabel(j)}</div>
+  `).join('');
+
+  return `
+    <div class="subtabs">${subtabs}</div>
+    <div class="card">
+      <div class="card-head">
+        <div><h3>Rekap Program ${jenisLabel(jenis)}</h3><div class="hint">Total program ${jenisLabel(jenis).toLowerCase()} terdaftar: ${totalProg}</div></div>
+        <div class="toolbar"><label style="font-size:12.5px;color:var(--muted);margin-right:6px;">Periode:</label>${periodInputHtml}</div>
+      </div>
+      <div class="tbl-wrap">
+      <table>
+        <thead><tr><th style="width:50px;">No</th><th style="width:190px;">Nama Waka</th><th style="width:150px;">Jabatan</th><th style="width:140px;">Jumlah Program</th><th style="width:140px;">Jumlah Selesai</th><th style="width:150px;">Prosentase</th></tr></thead>
+        <tbody>${rows || `<tr class="empty-row"><td colspan="6">Belum ada data waka.</td></tr>`}</tbody>
+      </table>
+      </div>
+    </div>
+  `;
+}
+function onRekapPeriodChange(jenis, val){
+  window._rekapPeriod = window._rekapPeriod || {};
+  window._rekapPeriod[jenis] = val;
+  render();
+}
+function openRekapDetail(ids, wakaNama){
+  const all = load('submissions', []);
+  const items = ids.map(id=>all.find(x=>x.id===id)).filter(Boolean);
+  const list = items.map(it=>`
+    <li>
+      <div class="pl-name">${escapeHtml(it.programNama)} ${submissionStatusTag(it.status||'pending')}</div>
+      <div class="pl-meta">Periode: ${escapeHtml(it.periode)} ${it.keterangan? '&mdash; '+escapeHtml(it.keterangan):''}</div>
+      ${it.status && it.status!=='pending' ? `<div class="pl-meta" style="margin-top:3px;">Catatan Kepala Sekolah: ${escapeHtml(it.catatanApproval||'-')}</div>` : ''}
+      ${it.foto ? `<img src="${it.foto}" style="max-width:100%;margin-top:8px;border-radius:8px;border:1px solid var(--line);">` : ''}
+    </li>`).join('');
+  openModal(`Program ${wakaNama}`, `<ul class="popup-list">${list || '<li>Tidak ada data.</li>'}</ul>`, null, true);
+}
+
+/* =========================================================
+   USER
+========================================================= */
+function renderUserPage(sub){
+  const tabs = `
+    <div class="subtabs">
+      <div class="subtab ${sub==='akun'?'active':''}" onclick="navigate('user','akun')" style="cursor:pointer;">Akun</div>
+      <div class="subtab ${sub==='akses'?'active':''}" onclick="navigate('user','akses')" style="cursor:pointer;">Kelola Akses</div>
+    </div>`;
+  if(sub==='akses') return tabs + renderAksesPage();
+  const users = load('users', []);
+  const rows = users.map((u,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td>${escapeHtml(u.username)}</td>
+      <td>
+        <span class="pw-mask" id="pwText-${u.id}" data-pw="${escapeHtml(u.password)}" data-visible="0">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</span>
+        <button class="btn btn-ghost btn-sm" style="margin-left:8px;padding:3px 8px;" onclick="togglePasswordPreview('${u.id}')" id="pwBtn-${u.id}" title="Lihat password">&#128065;</button>
+      </td>
+      <td>${escapeHtml(u.jabatan||'-')}</td>
+      <td><span class="tag tag-role-${u.role==='admin'?'admin':(u.role==='kepala sekolah'?'kepsek':'waka')}">${capitalize(u.role)}</span></td>
+      <td class="row-actions">
+        <button class="btn btn-ghost btn-sm" onclick="openUserModal('${u.id}')">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}')">Hapus</button>
+      </td>
+    </tr>`).join('');
+  return tabs + `
+    <div class="card">
+      <div class="card-head">
+        <div><h3>Akun Pengguna</h3><div class="hint">Kelola akun login untuk admin, kepala sekolah, dan waka.</div></div>
+        <button class="btn btn-primary" onclick="openUserModal()">+ Tambah Akun</button>
+      </div>
+      <div class="tbl-wrap">
+      <table>
+        <thead><tr><th style="width:50px;">No</th><th style="width:160px;">Username</th><th>Password</th><th style="width:190px;">Jabatan</th><th style="width:140px;">Role</th><th style="width:150px;">Aksi</th></tr></thead>
+        <tbody>${rows || `<tr class="empty-row"><td colspan="6">Belum ada akun.</td></tr>`}</tbody>
+      </table>
+      </div>
+    </div>
+  `;
+}
+function togglePasswordPreview(id){
+  const span = document.getElementById('pwText-'+id);
+  const btn = document.getElementById('pwBtn-'+id);
+  if(!span) return;
+  const visible = span.getAttribute('data-visible')==='1';
+  if(visible){
+    span.textContent = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
+    span.setAttribute('data-visible','0');
+    btn.innerHTML = '&#128065;';
+    btn.title = 'Lihat password';
+  } else {
+    span.textContent = span.getAttribute('data-pw');
+    span.setAttribute('data-visible','1');
+    btn.innerHTML = '&#128683;';
+    btn.title = 'Sembunyikan password';
+  }
+}
+function openUserModal(id){
+  const users = load('users', []);
+  const jabatanList = load('jabatanList', []);
+  const u = id ? users.find(x=>x.id===id) : null;
+  const currentNotInList = u && u.jabatan && !jabatanList.find(j=>j.nama===u.jabatan);
+  const body = `
+    <div class="field"><label>Username</label><input type="text" id="fUserUsername" value="${u?escapeHtml(u.username):''}" placeholder="Username"></div>
+    <div class="field"><label>Password</label><input type="text" id="fUserPassword" value="${u?escapeHtml(u.password):''}" placeholder="Password"></div>
+    <div class="field"><label>Jabatan</label>
+      <select id="fUserJabatan">
+        <option value="">- Pilih Jabatan -</option>
+        ${jabatanList.map(j=>`<option value="${escapeHtml(j.nama)}" ${u&&u.jabatan===j.nama?'selected':''}>${escapeHtml(j.nama)}</option>`).join('')}
+        ${currentNotInList ? `<option value="${escapeHtml(u.jabatan)}" selected>${escapeHtml(u.jabatan)} (lama)</option>` : ''}
+      </select>
+      <div style="font-size:12px;color:var(--muted);margin-top:6px;">Belum ada jabatan yang cocok? Tambahkan dulu di menu <b>Pengaturan &rsaquo; Kelola Jabatan</b>.</div>
+    </div>
+    <div class="field"><label>Role</label>
+      <select id="fUserRole">
+        <option value="admin" ${u&&u.role==='admin'?'selected':''}>Admin</option>
+        <option value="kepala sekolah" ${u&&u.role==='kepala sekolah'?'selected':''}>Kepala Sekolah</option>
+        <option value="waka" ${u&&u.role==='waka'?'selected':''}>Waka</option>
+      </select>
+    </div>
+  `;
+  openModal(id?'Edit Akun':'Tambah Akun', body, ()=>{
+    const username = document.getElementById('fUserUsername').value.trim();
+    const password = document.getElementById('fUserPassword').value;
+    const jabatan = document.getElementById('fUserJabatan').value.trim();
+    const role = document.getElementById('fUserRole').value;
+    if(!username || !password){ toast('Username dan password wajib diisi'); return false; }
+    const list = load('users', []);
+    const dup = list.find(x=>x.username===username && x.id!==id);
+    if(dup){ toast('Username sudah digunakan'); return false; }
+    if(u){
+      const idx = list.findIndex(x=>x.id===id);
+      list[idx] = {...list[idx], username, password, jabatan, role};
+    } else {
+      list.push({id:uid(), username, password, jabatan, role});
+    }
+    save('users', list);
+    render();
+    toast('Akun disimpan');
+    return true;
+  });
+}
+function deleteUser(id){
+  const users = load('users', []);
+  if(session && session.userId===id){ toast('Tidak dapat menghapus akun yang sedang digunakan'); return; }
+  confirmModal('Hapus akun ini?', ()=>{
+    save('users', load('users', []).filter(x=>x.id!==id));
+    render();
+    toast('Akun dihapus');
+  });
+}
+function renderAksesPage(){
+  const perms = load('permissions', {});
+  const roles = ['admin','kepala sekolah','waka'];
+  const menus = [{key:'dashboard',label:'Dashboard'},{key:'approve',label:'Approve Program'},{key:'waka',label:'Data Waka'},{key:'program',label:'Data Program'},{key:'programHarian',label:'Program Harian'},{key:'rekap',label:'Rekap Program'},{key:'user',label:'User'},{key:'pengaturan',label:'Pengaturan'}];
+  const rows = menus.map(m=>`
+    <tr>
+      <td>${m.label}</td>
+      ${roles.map(r=>`<td><input type="checkbox" class="chk" data-role="${r}" data-menu="${m.key}" ${perms[r]&&perms[r][m.key]?'checked':''} onchange="onAksesChange(this)" ${r==='admin'?'disabled':''}></td>`).join('')}
+    </tr>`).join('');
+  return `
+    <div class="card">
+      <div class="card-head">
+        <div><h3>Kelola Akses</h3><div class="hint">Atur menu yang dapat diakses oleh setiap role. Admin selalu memiliki akses penuh.</div></div>
+      </div>
+      <div class="tbl-wrap">
+      <table class="access-table">
+        <thead><tr><th>Menu</th><th>Admin</th><th>Kepala Sekolah</th><th>Waka</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      </div>
+    </div>
+  `;
+}
+function onAksesChange(el){
+  const perms = load('permissions', {});
+  const role = el.getAttribute('data-role');
+  const menu = el.getAttribute('data-menu');
+  perms[role] = perms[role] || {};
+  perms[role][menu] = el.checked;
+  save('permissions', perms);
+  toast('Akses diperbarui');
+  if(session && session.role===role) buildNav();
+}
+
+/* =========================================================
+   PENGATURAN
+========================================================= */
+function renderSettingsPage(){
+  const settings = load('settings', {tahunAjaran:[], tahunAktif:'', theme:'light'});
+  const jabatanList = load('jabatanList', []);
+  const jabatanRows = jabatanList.map((j,i)=>`
+    <tr><td class="col-no">${i+1}</td><td class="cell-name">${escapeHtml(j.nama)}</td>
+    <td class="col-act"><div class="row-actions"><button class="btn btn-ghost btn-sm" onclick="openJabatanModal('${j.id}')">Edit</button><button class="btn btn-danger btn-sm" onclick="deleteJabatan('${j.id}')">Hapus</button></div></td></tr>`).join('');
+  const tahunRows = (settings.tahunAjaran||[]).map((t,i)=>`
+    <tr><td class="col-no">${i+1}</td><td class="cell-name"><span class="ta-val">${escapeHtml(t)}</span>${t===settings.tahunAktif?'<span class="tag tag-bulanan">Aktif</span>':''}</td>
+    <td class="col-act col-act-wide"><div class="row-actions">
+      ${t!==settings.tahunAktif ? `<button class="btn btn-ghost btn-sm" onclick="setTahunAktif('${t}')">Jadikan Aktif</button>`:''}
+      <button class="btn btn-danger btn-sm" onclick="deleteTahun('${t}')">Hapus</button>
+    </div></td></tr>`).join('');
+
+  return `
+    <div class="settings-grid">
+    <div class="card">
+      <div class="card-head">
+        <div><h3>Kelola Jabatan</h3><div class="hint">Daftar jabatan induk waka. Dipakai sebagai sumber pilihan jabatan saat menambah data waka.</div></div>
+        <button class="btn btn-primary" onclick="openJabatanModal()">+ Tambah Jabatan</button>
+      </div>
+      <div class="tbl-wrap">
+      <table class="tbl-settings">
+        <thead><tr><th class="col-no">No</th><th>Nama Jabatan</th><th class="col-act">Aksi</th></tr></thead>
+        <tbody>${jabatanRows || `<tr class="empty-row"><td colspan="3">Belum ada data jabatan.</td></tr>`}</tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><h3>Kelola Tahun Ajaran</h3><div class="hint">Tahun ajaran aktif digunakan sebagai acuan periode pelaporan.</div></div>
+        <div class="toolbar">
+          <input type="text" id="fTahunBaru" placeholder="Contoh: 2026/2027" style="width:150px;">
+          <button class="btn btn-primary btn-sm" onclick="addTahun()">+ Tambah</button>
+        </div>
+      </div>
+      <div class="tbl-wrap">
+      <table class="tbl-settings">
+        <thead><tr><th class="col-no">No</th><th>Tahun Ajaran</th><th class="col-act col-act-wide">Aksi</th></tr></thead>
+        <tbody>${tahunRows || `<tr class="empty-row"><td colspan="3">Belum ada tahun ajaran.</td></tr>`}</tbody>
+      </table>
+      </div>
+    </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div><h3>Tampilan</h3><div class="hint">Pilih mode tampilan aplikasi.</div></div></div>
+      <div style="padding:20px;display:flex;gap:10px;">
+        <button class="btn ${settings.theme==='light'?'btn-primary':'btn-ghost'}" onclick="setTheme('light')">&#9788; Light</button>
+        <button class="btn ${settings.theme==='dark'?'btn-primary':'btn-ghost'}" onclick="setTheme('dark')">&#9789; Dark</button>
+      </div>
+    </div>
+  `;
+}
+function openJabatanModal(id){
+  const jabatanList = load('jabatanList', []);
+  const j = id ? jabatanList.find(x=>x.id===id) : null;
+  const body = `
+    <div class="field"><label>Nama Jabatan</label><input type="text" id="fJabatanNama" value="${j?escapeHtml(j.nama):''}" placeholder="Contoh: Waka Kurikulum"></div>
+  `;
+  openModal(id?'Edit Jabatan':'Tambah Jabatan', body, ()=>{
+    const nama = document.getElementById('fJabatanNama').value.trim();
+    if(!nama){ toast('Nama jabatan wajib diisi'); return false; }
+    const list = load('jabatanList', []);
+    const dup = list.find(x=>x.nama.toLowerCase()===nama.toLowerCase() && x.id!==id);
+    if(dup){ toast('Jabatan ini sudah ada'); return false; }
+    if(j){
+      const oldNama = j.nama;
+      const idx = list.findIndex(x=>x.id===id);
+      list[idx] = {...list[idx], nama};
+      save('jabatanList', list);
+      if(oldNama!==nama){
+        const wakas = load('wakas', []);
+        let changed = false;
+        wakas.forEach(w=>{ if(w.jabatan===oldNama){ w.jabatan = nama; changed = true; } });
+        if(changed) save('wakas', wakas);
+        const users = load('users', []);
+        let usersChanged = false;
+        users.forEach(u=>{ if(u.jabatan===oldNama){ u.jabatan = nama; usersChanged = true; } });
+        if(usersChanged) save('users', users);
+      }
+    } else {
+      list.push({id:uid(), nama});
+      save('jabatanList', list);
+    }
+    render();
+    toast('Data jabatan disimpan');
+    return true;
+  });
+}
+function deleteJabatan(id){
+  const jabatanList = load('jabatanList', []);
+  const j = jabatanList.find(x=>x.id===id);
+  if(!j) return;
+  const wakas = load('wakas', []);
+  const users = load('users', []);
+  const dipakaiWaka = wakas.some(w=>w.jabatan===j.nama);
+  const dipakaiAkun = users.some(u=>u.jabatan===j.nama);
+  let pesan = `Hapus jabatan "${escapeHtml(j.nama)}"?`;
+  if(dipakaiWaka && dipakaiAkun) pesan = `Jabatan "${escapeHtml(j.nama)}" masih dipakai oleh data waka dan akun pengguna. Tetap hapus dari daftar jabatan?`;
+  else if(dipakaiWaka) pesan = `Jabatan "${escapeHtml(j.nama)}" masih dipakai oleh salah satu data waka. Tetap hapus dari daftar jabatan?`;
+  else if(dipakaiAkun) pesan = `Jabatan "${escapeHtml(j.nama)}" masih dipakai oleh salah satu akun pengguna. Tetap hapus dari daftar jabatan?`;
+  confirmModal(pesan, ()=>{
+    save('jabatanList', load('jabatanList', []).filter(x=>x.id!==id));
+    render();
+    toast('Jabatan dihapus');
+  });
+}
+function addTahun(){
+  const val = document.getElementById('fTahunBaru').value.trim();
+  if(!val){ toast('Isi tahun ajaran terlebih dahulu'); return; }
+  const settings = load('settings', {tahunAjaran:[]});
+  settings.tahunAjaran = settings.tahunAjaran || [];
+  if(settings.tahunAjaran.includes(val)){ toast('Tahun ajaran sudah ada'); return; }
+  settings.tahunAjaran.push(val);
+  save('settings', settings);
+  render();
+  toast('Tahun ajaran ditambahkan');
+}
+function setTahunAktif(t){
+  const settings = load('settings', {});
+  settings.tahunAktif = t;
+  save('settings', settings);
+  render();
+  toast('Tahun ajaran aktif diperbarui');
+}
+function deleteTahun(t){
+  confirmModal('Hapus tahun ajaran ini?', ()=>{
+    const settings = load('settings', {});
+    settings.tahunAjaran = (settings.tahunAjaran||[]).filter(x=>x!==t);
+    if(settings.tahunAktif===t) settings.tahunAktif = settings.tahunAjaran[0] || '';
+    save('settings', settings);
+    render();
+    toast('Tahun ajaran dihapus');
+  });
+}
+
+/* =========================================================
+   MODAL SYSTEM
+========================================================= */
+function openModal(title, bodyHtml, onSubmit, hideFooter){
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal-box ${hideFooter?'wide':''}">
+        <div class="modal-head"><h3>${title}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body">${bodyHtml}</div>
+        ${onSubmit ? `<div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Batal</button><button class="btn btn-primary" id="modalSubmitBtn">Simpan</button></div>` : ''}
+      </div>
+    </div>
+  `;
+  document.getElementById('modalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='modalOverlay') closeModal(); });
+  if(onSubmit){
+    document.getElementById('modalSubmitBtn').onclick = ()=>{
+      const ok = onSubmit();
+      if(ok!==false) closeModal();
+    };
+  }
+}
+function confirmModal(msg, onYes, confirmLabel, confirmClass){
+  const root = document.getElementById('modalRoot');
+  const label = confirmLabel || 'Ya, Hapus';
+  const btnClass = confirmClass || 'btn-danger';
+  root.innerHTML = `
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal-box">
+        <div class="modal-head"><h3>Konfirmasi</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+        <div class="modal-body"><p style="font-size:14px;margin:0;">${msg}</p></div>
+        <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Batal</button><button class="btn ${btnClass}" id="modalYesBtn">${label}</button></div>
+      </div>
+    </div>
+  `;
+  document.getElementById('modalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='modalOverlay') closeModal(); });
+  document.getElementById('modalYesBtn').onclick = ()=>{ onYes(); closeModal(); };
+}
+function closeModal(){ document.getElementById('modalRoot').innerHTML = ''; }
+
+/* =========================================================
+   BOOTSTRAP
+========================================================= */
+function enterApp(){
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('app').classList.add('active');
+  applyTheme();
+  route = {menu:'dashboard', sub:null};
+  render();
+}
+applyTheme();
+(async function bootstrap(){
+  await initDB();
+  const btn = document.getElementById('loginSubmitBtn');
+  if(btn){ btn.disabled = false; btn.textContent = 'Masuk'; }
+  if(session){
+    const users = load('users', []);
+    if(users.find(x=>x.id===session.userId)){ enterApp(); }
+    else { session=null; save('session', null); }
+  }
+})();
+document.getElementById('loginPass').addEventListener('keydown', e=>{ if(e.key==='Enter' && !document.getElementById('loginSubmitBtn').disabled) doLogin(); });
+</script>
+</body>
+</html>
