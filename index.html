@@ -208,9 +208,6 @@ tbody tr:hover{background:var(--surface-2);}
 .tag-role-waka{background:var(--primary-soft);color:var(--primary-2);}
 .row-actions{display:flex;gap:6px;flex-wrap:nowrap;white-space:nowrap;}
 .link-count{background:none;border:none;color:var(--primary-2);font-weight:700;font-size:14px;text-decoration:underline;padding:0;}
-.pct-pill{display:inline-flex;align-items:center;gap:6px;font-weight:700;}
-.pct-track{width:60px;height:6px;background:var(--surface-2);border-radius:4px;overflow:hidden;}
-.pct-fill{height:100%;background:var(--primary-2);}
 
 .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
 .toolbar input[type=text], .toolbar input[type=date], .toolbar input[type=week], .toolbar input[type=month], .toolbar select{
@@ -419,15 +416,24 @@ function apiGet(action){
 async function syncToServer(key, val){
   let payload = val;
   if(key==='submissions' && Array.isArray(val)){
-    payload = await Promise.all(val.map(async(item)=>{
+    /* Kunci perbaikan bug centang hilang-muncul: proses upload foto ini
+       berjalan async dan bisa memakan waktu, sementara pengguna mungkin
+       sudah mencentang/menyimpan data submissions LAIN di waktu itu.
+       Jangan pernah menimpa DB['submissions'] dengan snapshot `val` yang
+       lama - selalu terapkan hasil upload foto ke atas state TERBARU
+       (DB['submissions'] saat ini), supaya perubahan yang terjadi di
+       antaranya tidak hilang tertimpa. */
+    const uploadedUrlById = {};
+    await Promise.all(val.map(async(item)=>{
       if(item && typeof item.foto==='string' && item.foto.indexOf('data:image')===0){
         try{
           const res = await apiPost({action:'uploadImage', dataUrl:item.foto, filename:'foto-'+item.id});
-          if(res && res.ok && res.url) return Object.assign({}, item, {foto:res.url});
+          if(res && res.ok && res.url) uploadedUrlById[item.id] = res.url;
         }catch(e){ console.error('Unggah foto gagal', e); }
       }
-      return item;
     }));
+    const latest = Array.isArray(DB['submissions']) ? DB['submissions'] : val;
+    payload = latest.map(item=> uploadedUrlById[item.id] ? Object.assign({}, item, {foto:uploadedUrlById[item.id]}) : item);
     DB['submissions'] = payload;
     saveLocalCache('submissions', payload);
   }
@@ -487,32 +493,32 @@ async function initDB(){
 function defaultValueFor(key){
   switch(key){
     case 'wakas': return [
-      {id:uid(), nama:'Ahmad Fauzi, S.Pd.', jabatan:'Waka Kurikulum', tahun:'2023'},
-      {id:uid(), nama:'Siti Rahma, M.Pd.', jabatan:'Waka Kesiswaan', tahun:'2022'},
-      {id:uid(), nama:'Budi Santoso, S.Pd.', jabatan:'Waka Sarana Prasarana', tahun:'2024'},
-      {id:uid(), nama:'Dewi Lestari, S.Pd.', jabatan:'Waka Humas', tahun:'2023'}
+      {id:'seed-waka-1', nama:'Ahmad Fauzi, S.Pd.', jabatan:'Waka Kurikulum', tahun:'2023'},
+      {id:'seed-waka-2', nama:'Siti Rahma, M.Pd.', jabatan:'Waka Kesiswaan', tahun:'2022'},
+      {id:'seed-waka-3', nama:'Budi Santoso, S.Pd.', jabatan:'Waka Sarana Prasarana', tahun:'2024'},
+      {id:'seed-waka-4', nama:'Dewi Lestari, S.Pd.', jabatan:'Waka Humas', tahun:'2023'}
     ];
     case 'jabatanList': return [
-      {id:uid(), nama:'Waka Kurikulum'},
-      {id:uid(), nama:'Waka Kesiswaan'},
-      {id:uid(), nama:'Waka Sarana Prasarana'},
-      {id:uid(), nama:'Waka Humas'}
+      {id:'seed-jabatan-1', nama:'Waka Kurikulum'},
+      {id:'seed-jabatan-2', nama:'Waka Kesiswaan'},
+      {id:'seed-jabatan-3', nama:'Waka Sarana Prasarana'},
+      {id:'seed-jabatan-4', nama:'Waka Humas'}
     ];
     case 'programs': return [
-      {id:uid(), nama:'Piket Gerbang Pagi', jenis:'harian'},
-      {id:uid(), nama:'Monitoring Jurnal Mengajar', jenis:'harian'},
-      {id:uid(), nama:'Rapat Koordinasi Mingguan', jenis:'mingguan'},
-      {id:uid(), nama:'Supervisi Kelas', jenis:'mingguan'},
-      {id:uid(), nama:'Evaluasi Capaian KBM', jenis:'bulanan'},
-      {id:uid(), nama:'Laporan Sarana Prasarana', jenis:'bulanan'},
-      {id:uid(), nama:'Penyusunan Program Kerja Tahunan', jenis:'tahunan'},
-      {id:uid(), nama:'Akreditasi & Evaluasi Diri Sekolah', jenis:'tahunan'}
+      {id:'seed-program-1', nama:'Piket Gerbang Pagi', jenis:'harian'},
+      {id:'seed-program-2', nama:'Monitoring Jurnal Mengajar', jenis:'harian'},
+      {id:'seed-program-3', nama:'Rapat Koordinasi Mingguan', jenis:'mingguan'},
+      {id:'seed-program-4', nama:'Supervisi Kelas', jenis:'mingguan'},
+      {id:'seed-program-5', nama:'Evaluasi Capaian KBM', jenis:'bulanan'},
+      {id:'seed-program-6', nama:'Laporan Sarana Prasarana', jenis:'bulanan'},
+      {id:'seed-program-7', nama:'Penyusunan Program Kerja Tahunan', jenis:'tahunan'},
+      {id:'seed-program-8', nama:'Akreditasi & Evaluasi Diri Sekolah', jenis:'tahunan'}
     ];
     case 'submissions': return [];
     case 'users': return [
-      {id:uid(), username:'admin', password:'admin123', role:'admin', jabatan:'Administrator Sistem'},
-      {id:uid(), username:'kepsek', password:'kepsek123', role:'kepala sekolah', jabatan:'Kepala Sekolah'},
-      {id:uid(), username:'waka1', password:'waka123', role:'waka', jabatan:'Waka Kurikulum'}
+      {id:'seed-user-admin', username:'admin', password:'admin123', role:'admin', jabatan:'Administrator Sistem'},
+      {id:'seed-user-kepsek', username:'kepsek', password:'kepsek123', role:'kepala sekolah', jabatan:'Kepala Sekolah'},
+      {id:'seed-user-waka1', username:'waka1', password:'waka123', role:'waka', jabatan:'Waka Kurikulum'}
     ];
     case 'permissions': return {
       'admin':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:true, pengaturan:true, tambahProgram:true},
@@ -845,7 +851,7 @@ function renderWakaPage(){
       </div>
       <div class="tbl-wrap">
       <table>
-        <thead><tr><th style="width:50px;">No</th><th style="width:230px;">Nama</th><th>Jabatan</th><th style="width:140px;">Tahun Menjabat</th><th style="width:150px;">Aksi</th></tr></thead>
+        <thead><tr><th style="width:50px;">No</th><th style="width:340px;">Nama</th><th>Jabatan</th><th style="width:140px;">Tahun Menjabat</th><th style="width:150px;">Aksi</th></tr></thead>
         <tbody>${rows || `<tr class="empty-row"><td colspan="5">Belum ada data waka.</td></tr>`}</tbody>
       </table>
       </div>
@@ -1074,6 +1080,7 @@ function renderProgramHarianPage(){
           <label style="font-size:12.5px;color:var(--muted);margin-right:2px;">Tanggal:</label>
           <input type="date" value="${selectedDate}" onchange="onHarianDateChange(this.value)">
           ${selectedDate!==todayStr() ? `<button class="btn btn-ghost btn-sm" onclick="onHarianDateChange('${todayStr()}')">Hari Ini</button>` : ''}
+          <button class="btn" style="background:#25D366;color:#fff;" onclick="shareHarianWA()">&#128172; Share WA</button>
           ${isWaka ? '' : `
           <button class="btn btn-ghost" onclick="exportProgramXLSX('harian')">&#8615; Export</button>
           <input type="file" id="importHarianInput" accept=".xlsx,.xls" style="display:none;" onchange="importProgramXLSX(this, 'harian')">
@@ -1093,6 +1100,29 @@ function renderProgramHarianPage(){
 function onHarianDateChange(val){
   window._harianFilterDate = val;
   render();
+}
+function formatTanggalLengkap(dateStr){
+  const hariList = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+  const bulanList = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  const parts = String(dateStr).split('-');
+  const d = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]));
+  if(isNaN(d.getTime())) return dateStr;
+  return `${hariList[d.getDay()]}, ${d.getDate()} ${bulanList[d.getMonth()]} ${d.getFullYear()}`;
+}
+function shareHarianWA(){
+  const isWaka = session && session.role==='waka';
+  const myWakaId = isWaka ? getMyWakaId() : null;
+  const selectedDate = window._harianFilterDate || todayStr();
+  let programs = load('programs', []).filter(p=>p.jenis==='harian');
+  if(isWaka) programs = programs.filter(p=>p.wakaId===myWakaId);
+  if(programs.length===0){ toast('Tidak ada program harian untuk dibagikan'); return; }
+  const wakaMap = {};
+  load('wakas', []).forEach(w=>{ wakaMap[w.id] = w.nama; });
+  let text = '*PROGRAM HARIAN*\n' + formatTanggalLengkap(selectedDate) + '\n\n';
+  programs.forEach((p,i)=>{
+    text += (i+1) + '. ' + p.nama + ' - ' + (wakaMap[p.wakaId] || 'Belum ada waka') + '\n';
+  });
+  window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
 }
 function getKetepatanWaktu(periode, diajukanPadaIso){
   if(!periode || !diajukanPadaIso) return null;
@@ -1346,7 +1376,7 @@ function openEditSubmissionModal(subId){
     <div class="field"><label>Keterangan</label><textarea id="fEditKet" rows="3">${escapeHtml(s.keterangan||'')}</textarea></div>
     <div class="field"><label>Foto Bukti Pelaksanaan</label>
       <input type="file" id="fEditFoto" accept="image/*" onchange="onFotoInputChange(this, 'fEditPreview')">
-      <img id="fEditPreview" style="${s.foto?'display:block;':'display:none;'}max-width:100%;margin-top:10px;border-radius:8px;border:1px solid var(--line);" src="${s.foto||''}">
+      <img id="fEditPreview" style="${s.foto?'display:block;':'display:none;'}max-width:100%;margin-top:10px;border-radius:8px;border:1px solid var(--line);" src="${s.foto||''}" referrerpolicy="no-referrer">
     </div>
   `;
   openModal('Edit Pengajuan Program', body, ()=>{
@@ -1439,7 +1469,13 @@ function renderApprovePage(){
 function openFotoDetail(subId){
   const s = load('submissions', []).find(x=>x.id===subId);
   if(!s || !s.foto) return;
-  openModal(`Foto &mdash; ${escapeHtml(s.programNama)}`, `<img src="${s.foto}" style="max-width:100%;border-radius:8px;">`, null, true);
+  openModal(`Foto &mdash; ${escapeHtml(s.programNama)}`, `
+    <img src="${s.foto}" referrerpolicy="no-referrer" style="max-width:100%;border-radius:8px;" onerror="this.style.display='none';document.getElementById('fotoFallback').style.display='block';">
+    <div id="fotoFallback" style="display:none;padding:14px;text-align:center;color:var(--muted);font-size:13px;">
+      Foto gagal dimuat di dalam aplikasi.<br>
+      <a href="${s.foto}" target="_blank" rel="noopener">Buka foto di tab baru</a>
+    </div>
+  `, null, true);
 }
 function toggleApproveSelect(id, checked){
   window._approveSelected = window._approveSelected || new Set();
@@ -1520,7 +1556,6 @@ function renderRekapPage(sub){
     const selesai = matched.filter(m=>m.status==='disetujui');
     const jumlahSelesai = selesai.length;
     const pct = jumlahProgram>0 ? Math.round((jumlahSelesai/jumlahProgram)*100) : 0;
-    const pctColor = pct>=100 ? 'var(--success)' : pct>=50 ? 'var(--accent)' : pct>0 ? 'var(--danger)' : 'var(--muted)';
     return `
       <tr>
         <td>${i+1}</td>
@@ -1529,7 +1564,10 @@ function renderRekapPage(sub){
         <td>${jumlahProgram} program</td>
         <td>${jumlahSelesai>0 ? `<button class="link-count" onclick='openRekapDetail(${JSON.stringify(selesai.map(m=>m.id))}, "${escapeHtml(w.nama)}")'>${jumlahSelesai} program</button>` : `<span style="color:var(--muted);">0 program</span>`}</td>
         <td>
-          <span class="pct-pill" style="color:${pctColor};">${pct}%<span class="pct-track"><span class="pct-fill" style="width:${Math.min(pct,100)}%;background:${pctColor} !important;"></span></span></span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="pbar-track" style="flex:1;margin-bottom:0;"><div class="pbar-fill" style="width:${Math.min(pct,100)}%"></div></div>
+            <b style="font-family:var(--font-head);font-size:14px;white-space:nowrap;">${pct}%</b>
+          </div>
         </td>
       </tr>`;
   }).join('');
@@ -1547,7 +1585,7 @@ function renderRekapPage(sub){
       </div>
       <div class="tbl-wrap">
       <table>
-        <thead><tr><th style="width:50px;">No</th><th style="width:190px;">Nama Waka</th><th style="width:150px;">Jabatan</th><th style="width:140px;">Jumlah Program</th><th style="width:140px;">Jumlah Selesai</th><th style="width:150px;">Prosentase</th></tr></thead>
+        <thead><tr><th style="width:50px;">No</th><th style="width:190px;">Nama Waka</th><th style="width:150px;">Jabatan</th><th style="width:140px;">Jumlah Program</th><th style="width:140px;">Jumlah Selesai</th><th style="width:170px;">Prosentase</th></tr></thead>
         <tbody>${rows || `<tr class="empty-row"><td colspan="6">Belum ada data waka.</td></tr>`}</tbody>
       </table>
       </div>
@@ -1567,7 +1605,7 @@ function openRekapDetail(ids, wakaNama){
       <div class="pl-name">${escapeHtml(it.programNama)} ${submissionStatusTag(it.status||'pending')}</div>
       <div class="pl-meta">Periode: ${escapeHtml(it.periode)} ${it.keterangan? '&mdash; '+escapeHtml(it.keterangan):''}</div>
       ${it.status && it.status!=='pending' ? `<div class="pl-meta" style="margin-top:3px;">Catatan Kepala Sekolah: ${escapeHtml(it.catatanApproval||'-')}</div>` : ''}
-      ${it.foto ? `<img src="${it.foto}" style="max-width:100%;margin-top:8px;border-radius:8px;border:1px solid var(--line);">` : ''}
+      ${it.foto ? `<img src="${it.foto}" referrerpolicy="no-referrer" style="max-width:100%;margin-top:8px;border-radius:8px;border:1px solid var(--line);">` : ''}
     </li>`).join('');
   openModal(`Program ${wakaNama}`, `<ul class="popup-list">${list || '<li>Tidak ada data.</li>'}</ul>`, null, true);
 }
@@ -1987,7 +2025,15 @@ applyTheme();
   if(btn){ btn.disabled = false; btn.textContent = 'Masuk'; }
   if(session){
     const users = load('users', []);
-    if(users.find(x=>x.id===session.userId)){ enterApp(); }
+    let match = users.find(x=>x.id===session.userId);
+    if(!match && session.username){
+      /* Sesi tersimpan merujuk ke ID lama yang sudah tidak ada (misalnya sisa
+         dari insiden data sebelumnya). Coba cocokkan lewat username supaya
+         pengguna tidak perlu login ulang tanpa alasan yang jelas. */
+      match = users.find(x=>x.username===session.username);
+      if(match){ session = {userId:match.id, username:match.username, role:match.role}; save('session', session); }
+    }
+    if(match){ enterApp(); }
     else { session=null; save('session', null); }
   }
 })();
