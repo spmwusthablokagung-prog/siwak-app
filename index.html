@@ -1133,11 +1133,21 @@ function shareHarianWA(){
   if(programs.length===0){ toast('Tidak ada program harian untuk dibagikan'); return; }
   const wakaMap = {};
   load('wakas', []).forEach(w=>{ wakaMap[w.id] = w.nama; });
-  let text = '*PROGRAM HARIAN*\n' + formatTanggalLengkap(selectedDate) + '\n\n';
-  programs.forEach((p,i)=>{
-    text += (i+1) + '. ' + p.nama + ' - ' + (wakaMap[p.wakaId] || 'Belum ada waka') + '\n';
+  const submissions = load('submissions', []);
+  let text = '*TUGAS HARIAN*\n_' + formatTanggalLengkap(selectedDate) + '_\n\n';
+  programs.forEach(p=>{
+    const current = submissions.find(s=>s.programId===p.id && s.periode===selectedDate);
+    const isChecked = !!current && current.status!=='ditolak';
+    let ket = '';
+    if(isChecked && current.diajukanPada){
+      const status = getKetepatanWaktu(current.periode, current.diajukanPada);
+      ket = status==='tepat' ? '✅' : '🚫';
+    }
+    text += '🗒️: *' + p.nama + '*\n';
+    text += '*PJ* : *' + (wakaMap[p.wakaId] || 'Belum ada waka') + '*\n';
+    text += '*KET* : ' + ket + '\n\n';
   });
-  window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+  window.open('https://wa.me/?text=' + encodeURIComponent(text.trim()), '_blank');
 }
 function getKetepatanWaktu(periode, diajukanPadaIso){
   if(!periode || !diajukanPadaIso) return null;
