@@ -373,13 +373,27 @@ function loadLocalCache(key, fallback){
 function saveLocalCache(key, val){
   try{ localStorage.setItem(DB_PREFIX+key, JSON.stringify(val)); }catch(e){ console.error('Gagal menyimpan cache lokal', e); }
 }
+/* Sesi login SENGAJA dipakai sessionStorage (bukan localStorage): tetap
+   bertahan saat halaman di-refresh, tapi otomatis hilang begitu tab/browser
+   ditutup - jadi user wajib login lagi setiap kali benar-benar membuka
+   ulang sistem ini, bukan cuma me-refresh halaman yang sedang dibuka. */
+function loadSession(fallback){
+  try{
+    const raw = sessionStorage.getItem(DB_PREFIX+'session');
+    if(raw===null) return fallback;
+    return JSON.parse(raw);
+  }catch(e){ return fallback; }
+}
+function saveSession(val){
+  try{ sessionStorage.setItem(DB_PREFIX+'session', JSON.stringify(val)); }catch(e){ console.error('Gagal menyimpan sesi', e); }
+}
 function load(key, fallback){
-  if(key==='session') return loadLocalCache('session', fallback);
+  if(key==='session') return loadSession(fallback);
   if(Object.prototype.hasOwnProperty.call(DB, key) && DB[key]!==undefined) return DB[key];
   return fallback;
 }
 function save(key, val){
-  if(key==='session'){ saveLocalCache('session', val); return; }
+  if(key==='session'){ saveSession(val); return; }
   DB[key] = val;
   saveLocalCache(key, val);
   queueSync(key, val);
@@ -558,7 +572,7 @@ function migratePermissionsIfNeeded(){
 /* =========================================================
    AUTH
 ========================================================= */
-let session = loadLocalCache('session', null);
+let session = loadSession(null);
 
 function doLogin(){
   const u = document.getElementById('loginUser').value.trim();
@@ -703,6 +717,7 @@ function buildNav(){
 function navigate(menu, sub){
   if(!canAccess(menu)){ toast('Anda tidak memiliki akses ke menu ini'); return; }
   route = {menu, sub};
+  saveLocalCache('route', route);
   document.getElementById('sidebar').classList.remove('open');
   render();
 }
@@ -2015,7 +2030,12 @@ function enterApp(){
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('app').classList.add('active');
   applyTheme();
-  route = {menu:'dashboard', sub:null};
+  const saved = loadLocalCache('route', null);
+  if(saved && saved.menu && MENU_DEFS.find(m=>m.key===saved.menu) && canAccess(saved.menu)){
+    route = saved;
+  } else {
+    route = {menu:'dashboard', sub:null};
+  }
   render();
 }
 applyTheme();
