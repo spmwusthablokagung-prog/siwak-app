@@ -544,7 +544,7 @@ function defaultValueFor(key){
       {id:'seed-user-waka1', username:'waka1', password:'waka123', role:'waka', jabatan:'Waka Kurikulum'}
     ];
     case 'permissions': return {
-      'admin':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:true, pengaturan:true, tambahProgram:true, hapusMassal:false},
+      'admin':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:true, pengaturan:true, tambahProgram:true, hapusMassal:true},
       'kepala sekolah':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false, hapusMassal:false},
       'waka':{dashboard:true, approve:false, waka:false, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false, hapusMassal:false}
     };
@@ -570,11 +570,12 @@ function migratePermissionsIfNeeded(){
   let changed = false;
   const defaults = {admin:true, 'kepala sekolah':true, waka:false};
   const tambahProgramDefaults = {admin:true, 'kepala sekolah':false, waka:false};
+  const hapusMassalDefaults = {admin:true, 'kepala sekolah':false, waka:false};
   Object.keys(defaults).forEach(role=>{
     if(perms[role] && perms[role].approve===undefined){ perms[role].approve = defaults[role]; changed = true; }
     if(perms[role] && perms[role].programHarian===undefined){ perms[role].programHarian = true; changed = true; }
     if(perms[role] && perms[role].tambahProgram===undefined){ perms[role].tambahProgram = tambahProgramDefaults[role]; changed = true; }
-    if(perms[role] && perms[role].hapusMassal===undefined){ perms[role].hapusMassal = false; changed = true; }
+    if(perms[role] && perms[role].hapusMassal===undefined){ perms[role].hapusMassal = hapusMassalDefaults[role]; changed = true; }
   });
   if(changed) save('permissions', perms);
 }
@@ -620,7 +621,7 @@ function canAccess(menu){
    menu Pengaturan > Kelola Fitur)
 ========================================================= */
 window._bulkSelected = window._bulkSelected || {};
-function bulkEnabled(){ return session && session.role==='admin' && canAccess('hapusMassal'); }
+function bulkEnabled(){ return session && canAccess('hapusMassal'); }
 function getBulkSet(tableKey){
   window._bulkSelected[tableKey] = window._bulkSelected[tableKey] || new Set();
   return window._bulkSelected[tableKey];
@@ -629,7 +630,8 @@ function bulkCheckboxHeaderCell(tableKey, ids){
   if(!bulkEnabled()) return '';
   const set = getBulkSet(tableKey);
   const allChecked = ids.length>0 && ids.every(id=>set.has(id));
-  return `<th style="width:36px;"><input type="checkbox" ${allChecked?'checked':''} onchange="toggleBulkSelectAll('${tableKey}', ${JSON.stringify(ids)}, this.checked)"></th>`;
+  const idsAttr = JSON.stringify(ids).replace(/"/g, '&quot;');
+  return `<th style="width:36px;"><input type="checkbox" ${allChecked?'checked':''} onchange="toggleBulkSelectAll('${tableKey}', ${idsAttr}, this.checked)"></th>`;
 }
 function bulkCheckboxRowCell(tableKey, id){
   if(!bulkEnabled()) return '';
@@ -1124,8 +1126,8 @@ function renderProgramPage(){
       <div class="card-head">
         <div><h3>Data Program Kerja</h3><div class="hint">${isWaka? 'Program kerja yang menjadi tanggung jawab Anda.' : (isKepsek ? 'Pantau daftar program dan status pelaksanaannya.' : 'Kelola daftar program dan ajukan pelaksanaan program oleh waka.')}</div></div>
         <div class="toolbar">
-          ${isWaka || isKepsek ? '' : `
           ${bulkDeleteButton('programs')}
+          ${isWaka || isKepsek ? '' : `
           <button class="btn btn-ghost" onclick="exportProgramXLSX('program')">&#8615; Export</button>
           <input type="file" id="importProgramInput" accept=".xlsx,.xls" style="display:none;" onchange="importProgramXLSX(this, 'program')">
           <button class="btn btn-ghost" onclick="document.getElementById('importProgramInput').click()">&#8613; Import</button>`}
@@ -1196,8 +1198,8 @@ function renderProgramHarianPage(){
           <input type="date" value="${selectedDate}" onchange="onHarianDateChange(this.value)">
           ${selectedDate!==todayStr() ? `<button class="btn btn-ghost btn-sm" onclick="onHarianDateChange('${todayStr()}')">Hari Ini</button>` : ''}
           <button class="btn" style="background:#25D366;color:#fff;" onclick="shareHarianWA()">&#128172; Share WA</button>
-          ${isWaka ? '' : `
           ${bulkDeleteButton('programsHarian')}
+          ${isWaka ? '' : `
           <button class="btn btn-ghost" onclick="exportProgramXLSX('harian')">&#8615; Export</button>
           <input type="file" id="importHarianInput" accept=".xlsx,.xls" style="display:none;" onchange="importProgramXLSX(this, 'harian')">
           <button class="btn btn-ghost" onclick="document.getElementById('importHarianInput').click()">&#8613; Import</button>`}
@@ -1858,7 +1860,7 @@ function renderAksesPage(){
   const menus = [{key:'dashboard',label:'Dashboard'},{key:'approve',label:'Approve Program'},{key:'waka',label:'Data Waka'},{key:'program',label:'Data Program'},{key:'programHarian',label:'Program Harian'},{key:'rekap',label:'Rekap Program'},{key:'user',label:'User'},{key:'pengaturan',label:'Pengaturan'}];
   const fitur = [
     {key:'tambahProgram',label:'Tombol Tambah Program (menu Data Program &amp; Program Harian)'},
-    {key:'hapusMassal',label:'Centang &amp; Hapus Massal di Semua Tabel (khusus Admin)', adminOnly:true}
+    {key:'hapusMassal',label:'Centang &amp; Hapus Massal di Semua Tabel'}
   ];
   const rows = menus.map(m=>`
     <tr>
@@ -1868,10 +1870,7 @@ function renderAksesPage(){
   const fiturRows = fitur.map(m=>`
     <tr>
       <td>${m.label}</td>
-      ${roles.map(r=>{
-        const locked = m.adminOnly ? (r!=='admin') : (r==='admin');
-        return `<td><input type="checkbox" class="chk" data-role="${r}" data-menu="${m.key}" ${perms[r]&&perms[r][m.key]?'checked':''} onchange="onAksesChange(this)" ${locked?'disabled':''}></td>`;
-      }).join('')}
+      ${roles.map(r=>`<td><input type="checkbox" class="chk" data-role="${r}" data-menu="${m.key}" ${perms[r]&&perms[r][m.key]?'checked':''} onchange="onAksesChange(this)" ${r==='admin'?'disabled':''}></td>`).join('')}
     </tr>`).join('');
   return `
     <div class="card">
