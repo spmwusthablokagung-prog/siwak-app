@@ -535,9 +535,9 @@ function defaultValueFor(key){
       {id:'seed-user-waka1', username:'waka1', password:'waka123', role:'waka', jabatan:'Waka Kurikulum'}
     ];
     case 'permissions': return {
-      'admin':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:true, pengaturan:true, tambahProgram:true},
-      'kepala sekolah':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false},
-      'waka':{dashboard:true, approve:false, waka:false, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false}
+      'admin':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:true, pengaturan:true, tambahProgram:true, hapusMassal:false},
+      'kepala sekolah':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false, hapusMassal:false},
+      'waka':{dashboard:true, approve:false, waka:false, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false, hapusMassal:false}
     };
     case 'settings': return {tahunAjaran:['2024/2025','2025/2026'], tahunAktif:'2025/2026', theme:'light'};
     default: return undefined;
@@ -565,6 +565,7 @@ function migratePermissionsIfNeeded(){
     if(perms[role] && perms[role].approve===undefined){ perms[role].approve = defaults[role]; changed = true; }
     if(perms[role] && perms[role].programHarian===undefined){ perms[role].programHarian = true; changed = true; }
     if(perms[role] && perms[role].tambahProgram===undefined){ perms[role].tambahProgram = tambahProgramDefaults[role]; changed = true; }
+    if(perms[role] && perms[role].hapusMassal===undefined){ perms[role].hapusMassal = false; changed = true; }
   });
   if(changed) save('permissions', perms);
 }
@@ -604,6 +605,67 @@ function canAccess(menu){
   if(!session) return false;
   const rolePerms = perms[session.role] || {};
   return !!rolePerms[menu];
+}
+/* =========================================================
+   CENTANG & HAPUS MASSAL (khusus admin, bisa di-toggle lewat
+   menu Pengaturan > Kelola Fitur)
+========================================================= */
+window._bulkSelected = window._bulkSelected || {};
+function bulkEnabled(){ return session && session.role==='admin' && canAccess('hapusMassal'); }
+function getBulkSet(tableKey){
+  window._bulkSelected[tableKey] = window._bulkSelected[tableKey] || new Set();
+  return window._bulkSelected[tableKey];
+}
+function bulkCheckboxHeaderCell(tableKey, ids){
+  if(!bulkEnabled()) return '';
+  const set = getBulkSet(tableKey);
+  const allChecked = ids.length>0 && ids.every(id=>set.has(id));
+  return `<th style="width:36px;"><input type="checkbox" ${allChecked?'checked':''} onchange="toggleBulkSelectAll('${tableKey}', ${JSON.stringify(ids)}, this.checked)"></th>`;
+}
+function bulkCheckboxRowCell(tableKey, id){
+  if(!bulkEnabled()) return '';
+  const set = getBulkSet(tableKey);
+  return `<td><input type="checkbox" ${set.has(id)?'checked':''} onchange="toggleBulkSelect('${tableKey}', '${id}', this.checked)"></td>`;
+}
+function toggleBulkSelect(tableKey, id, checked){
+  const set = getBulkSet(tableKey);
+  if(checked) set.add(id); else set.delete(id);
+  render();
+}
+function toggleBulkSelectAll(tableKey, ids, checked){
+  const set = getBulkSet(tableKey);
+  if(checked) ids.forEach(id=>set.add(id)); else ids.forEach(id=>set.delete(id));
+  render();
+}
+function bulkDeleteButton(tableKey){
+  if(!bulkEnabled()) return '';
+  const count = getBulkSet(tableKey).size;
+  return `<button class="btn btn-danger" ${count===0?'disabled':''} onclick="bulkDeleteConfirm('${tableKey}')">&#128465; Hapus Terpilih${count>0?' ('+count+')':''}</button>`;
+}
+const BULK_TABLE_CONFIG = {
+  wakas: {dataKey:'wakas', label:'data waka'},
+  jabatanList: {dataKey:'jabatanList', label:'jabatan'},
+  programs: {dataKey:'programs', label:'program'},
+  programsHarian: {dataKey:'programs', label:'program harian'},
+  users: {dataKey:'users', label:'akun user'}
+};
+function bulkDeleteConfirm(tableKey){
+  const cfg = BULK_TABLE_CONFIG[tableKey];
+  if(!cfg) return;
+  const set = getBulkSet(tableKey);
+  if(set.size===0){ toast('Belum ada data yang dicentang'); return; }
+  if(cfg.dataKey==='users' && session && set.has(session.userId)){
+    toast('Tidak dapat menghapus akun yang sedang digunakan, hilangkan centangnya terlebih dahulu');
+    return;
+  }
+  confirmModal(`Hapus ${set.size} ${cfg.label} terpilih? Tindakan ini tidak bisa dibatalkan.`, ()=>{
+    const list = load(cfg.dataKey, []).filter(x=>!set.has(x.id));
+    save(cfg.dataKey, list);
+    set.clear();
+    render();
+    const msg = cfg.label.charAt(0).toUpperCase() + cfg.label.slice(1) + ' terpilih berhasil dihapus';
+    toast(msg);
+  });
 }
 function getSessionUser(){
   if(!session) return null;
@@ -844,6 +906,7 @@ function renderWakaPage(){
   const wakas = load('wakas', []);
   const rows = wakas.map((w,i)=>`
     <tr>
+      ${bulkCheckboxRowCell('wakas', w.id)}
       <td>${i+1}</td>
       <td>${escapeHtml(w.nama)}</td>
       <td>${escapeHtml(w.jabatan)}</td>
@@ -858,6 +921,7 @@ function renderWakaPage(){
       <div class="card-head">
         <div><h3>Data Wakil Kepala Sekolah</h3><div class="hint">Daftar waka beserta jabatan dan tahun menjabat.</div></div>
         <div class="toolbar">
+          ${bulkDeleteButton('wakas')}
           <button class="btn btn-ghost" onclick="exportWakaXLSX()">&#8615; Export</button>
           <input type="file" id="importWakaInput" accept=".xlsx,.xls" style="display:none;" onchange="importWakaXLSX(this)">
           <button class="btn btn-ghost" onclick="document.getElementById('importWakaInput').click()">&#8613; Import</button>
@@ -866,8 +930,8 @@ function renderWakaPage(){
       </div>
       <div class="tbl-wrap">
       <table>
-        <thead><tr><th style="width:50px;">No</th><th style="width:340px;">Nama</th><th>Jabatan</th><th style="width:140px;">Tahun Menjabat</th><th style="width:150px;">Aksi</th></tr></thead>
-        <tbody>${rows || `<tr class="empty-row"><td colspan="5">Belum ada data waka.</td></tr>`}</tbody>
+        <thead><tr>${bulkCheckboxHeaderCell('wakas', wakas.map(w=>w.id))}<th style="width:50px;">No</th><th style="width:340px;">Nama</th><th>Jabatan</th><th style="width:140px;">Tahun Menjabat</th><th style="width:150px;">Aksi</th></tr></thead>
+        <tbody>${rows || `<tr class="empty-row"><td colspan="${bulkEnabled()?6:5}">Belum ada data waka.</td></tr>`}</tbody>
       </table>
       </div>
     </div>
@@ -1009,6 +1073,7 @@ function renderProgramPage(){
     const isLocked = current && (current.status==='disetujui' || current.status==='pending');
     return `
     <tr>
+      ${bulkCheckboxRowCell('programs', p.id)}
       <td>${i+1}</td>
       <td>${escapeHtml(p.nama)}</td>
       <td>${escapeHtml(wakaMap[p.wakaId] || '-')}</td>
@@ -1027,6 +1092,7 @@ function renderProgramPage(){
         <div><h3>Data Program Kerja</h3><div class="hint">${isWaka? 'Program kerja yang menjadi tanggung jawab Anda.' : (isKepsek ? 'Pantau daftar program dan status pelaksanaannya.' : 'Kelola daftar program dan ajukan pelaksanaan program oleh waka.')}</div></div>
         <div class="toolbar">
           ${isWaka || isKepsek ? '' : `
+          ${bulkDeleteButton('programs')}
           <button class="btn btn-ghost" onclick="exportProgramXLSX('program')">&#8615; Export</button>
           <input type="file" id="importProgramInput" accept=".xlsx,.xls" style="display:none;" onchange="importProgramXLSX(this, 'program')">
           <button class="btn btn-ghost" onclick="document.getElementById('importProgramInput').click()">&#8613; Import</button>`}
@@ -1035,8 +1101,8 @@ function renderProgramPage(){
       </div>
       <div class="tbl-wrap">
       <table>
-        <thead><tr><th style="width:50px;">No</th><th style="width:230px;">Nama Program</th><th style="width:170px;">Waka</th><th style="width:120px;">Jenis</th><th style="width:290px;">Aksi</th></tr></thead>
-        <tbody>${rows || `<tr class="empty-row"><td colspan="5">Belum ada data program.</td></tr>`}</tbody>
+        <thead><tr>${bulkCheckboxHeaderCell('programs', programs.map(p=>p.id))}<th style="width:50px;">No</th><th style="width:230px;">Nama Program</th><th style="width:170px;">Waka</th><th style="width:120px;">Jenis</th><th style="width:290px;">Aksi</th></tr></thead>
+        <tbody>${rows || `<tr class="empty-row"><td colspan="${bulkEnabled()?6:5}">Belum ada data program.</td></tr>`}</tbody>
       </table>
       </div>
     </div>
@@ -1069,6 +1135,7 @@ function renderProgramHarianPage(){
     }
     return `
     <tr>
+      ${bulkCheckboxRowCell('programsHarian', p.id)}
       <td>${i+1}</td>
       <td>${escapeHtml(p.nama)}</td>
       <td>${escapeHtml(wakaMap[p.wakaId] || '-')}</td>
@@ -1097,16 +1164,17 @@ function renderProgramHarianPage(){
           ${selectedDate!==todayStr() ? `<button class="btn btn-ghost btn-sm" onclick="onHarianDateChange('${todayStr()}')">Hari Ini</button>` : ''}
           <button class="btn" style="background:#25D366;color:#fff;" onclick="shareHarianWA()">&#128172; Share WA</button>
           ${isWaka ? '' : `
+          ${bulkDeleteButton('programsHarian')}
           <button class="btn btn-ghost" onclick="exportProgramXLSX('harian')">&#8615; Export</button>
           <input type="file" id="importHarianInput" accept=".xlsx,.xls" style="display:none;" onchange="importProgramXLSX(this, 'harian')">
-          <button class="btn btn-ghost" onclick="document.getElementById('importHarianInput').click()">&#8613; Import</button>
-          <button class="btn btn-primary" onclick="openProgramModal(null,'harian')">+ Tambah Program Harian</button>`}
+          <button class="btn btn-ghost" onclick="document.getElementById('importHarianInput').click()">&#8613; Import</button>`}
+          ${canAccess('tambahProgram') ? `<button class="btn btn-primary" onclick="openProgramModal(null,'harian')">+ Tambah Program Harian</button>` : ''}
         </div>
       </div>
       <div class="tbl-wrap">
       <table>
-        <thead><tr><th style="width:50px;">No</th><th style="width:190px;">Nama Program</th><th style="width:140px;">Waka</th><th style="width:140px;">Selesai</th><th style="width:160px;">Tanggal &amp; Jam</th><th style="width:130px;">Status</th><th style="width:150px;">Aksi</th></tr></thead>
-        <tbody>${rows || `<tr class="empty-row"><td colspan="7">Belum ada program harian.</td></tr>`}</tbody>
+        <thead><tr>${bulkCheckboxHeaderCell('programsHarian', programs.map(p=>p.id))}<th style="width:50px;">No</th><th style="width:190px;">Nama Program</th><th style="width:140px;">Waka</th><th style="width:140px;">Selesai</th><th style="width:160px;">Tanggal &amp; Jam</th><th style="width:130px;">Status</th><th style="width:150px;">Aksi</th></tr></thead>
+        <tbody>${rows || `<tr class="empty-row"><td colspan="${bulkEnabled()?8:7}">Belum ada program harian.</td></tr>`}</tbody>
       </table>
       </div>
     </div>
@@ -1648,6 +1716,7 @@ function renderUserPage(sub){
   const users = load('users', []);
   const rows = users.map((u,i)=>`
     <tr>
+      ${u.id===(session&&session.userId) ? (bulkEnabled()?'<td></td>':'') : bulkCheckboxRowCell('users', u.id)}
       <td>${i+1}</td>
       <td>${escapeHtml(u.username)}</td>
       <td>
@@ -1665,12 +1734,15 @@ function renderUserPage(sub){
     <div class="card">
       <div class="card-head">
         <div><h3>Akun Pengguna</h3><div class="hint">Kelola akun login untuk admin, kepala sekolah, dan waka.</div></div>
-        <button class="btn btn-primary" onclick="openUserModal()">+ Tambah Akun</button>
+        <div class="toolbar">
+          ${bulkDeleteButton('users')}
+          <button class="btn btn-primary" onclick="openUserModal()">+ Tambah Akun</button>
+        </div>
       </div>
       <div class="tbl-wrap">
       <table>
-        <thead><tr><th style="width:50px;">No</th><th style="width:160px;">Username</th><th>Password</th><th style="width:190px;">Jabatan</th><th style="width:140px;">Role</th><th style="width:150px;">Aksi</th></tr></thead>
-        <tbody>${rows || `<tr class="empty-row"><td colspan="6">Belum ada akun.</td></tr>`}</tbody>
+        <thead><tr>${bulkCheckboxHeaderCell('users', users.filter(u=>u.id!==(session&&session.userId)).map(u=>u.id))}<th style="width:50px;">No</th><th style="width:160px;">Username</th><th>Password</th><th style="width:190px;">Jabatan</th><th style="width:140px;">Role</th><th style="width:150px;">Aksi</th></tr></thead>
+        <tbody>${rows || `<tr class="empty-row"><td colspan="${bulkEnabled()?7:6}">Belum ada akun.</td></tr>`}</tbody>
       </table>
       </div>
     </div>
@@ -1751,7 +1823,10 @@ function renderAksesPage(){
   const perms = load('permissions', {});
   const roles = ['admin','kepala sekolah','waka'];
   const menus = [{key:'dashboard',label:'Dashboard'},{key:'approve',label:'Approve Program'},{key:'waka',label:'Data Waka'},{key:'program',label:'Data Program'},{key:'programHarian',label:'Program Harian'},{key:'rekap',label:'Rekap Program'},{key:'user',label:'User'},{key:'pengaturan',label:'Pengaturan'}];
-  const fitur = [{key:'tambahProgram',label:'Tombol Tambah Program (menu Data Program)'}];
+  const fitur = [
+    {key:'tambahProgram',label:'Tombol Tambah Program (menu Data Program &amp; Program Harian)'},
+    {key:'hapusMassal',label:'Centang &amp; Hapus Massal di Semua Tabel (khusus Admin)', adminOnly:true}
+  ];
   const rows = menus.map(m=>`
     <tr>
       <td>${m.label}</td>
@@ -1760,7 +1835,10 @@ function renderAksesPage(){
   const fiturRows = fitur.map(m=>`
     <tr>
       <td>${m.label}</td>
-      ${roles.map(r=>`<td><input type="checkbox" class="chk" data-role="${r}" data-menu="${m.key}" ${perms[r]&&perms[r][m.key]?'checked':''} onchange="onAksesChange(this)" ${r==='admin'?'disabled':''}></td>`).join('')}
+      ${roles.map(r=>{
+        const locked = m.adminOnly ? (r!=='admin') : (r==='admin');
+        return `<td><input type="checkbox" class="chk" data-role="${r}" data-menu="${m.key}" ${perms[r]&&perms[r][m.key]?'checked':''} onchange="onAksesChange(this)" ${locked?'disabled':''}></td>`;
+      }).join('')}
     </tr>`).join('');
   return `
     <div class="card">
@@ -1805,7 +1883,7 @@ function renderSettingsPage(){
   const settings = load('settings', {tahunAjaran:[], tahunAktif:'', theme:'light'});
   const jabatanList = load('jabatanList', []);
   const jabatanRows = jabatanList.map((j,i)=>`
-    <tr><td class="col-no">${i+1}</td><td class="cell-name">${escapeHtml(j.nama)}</td>
+    <tr>${bulkCheckboxRowCell('jabatanList', j.id)}<td class="col-no">${i+1}</td><td class="cell-name">${escapeHtml(j.nama)}</td>
     <td class="col-act"><div class="row-actions"><button class="btn btn-ghost btn-sm" onclick="openJabatanModal('${j.id}')">Edit</button><button class="btn btn-danger btn-sm" onclick="deleteJabatan('${j.id}')">Hapus</button></div></td></tr>`).join('');
   const tahunRows = (settings.tahunAjaran||[]).map((t,i)=>`
     <tr><td class="col-no">${i+1}</td><td class="cell-name"><span class="ta-val">${escapeHtml(t)}</span>${t===settings.tahunAktif?'<span class="tag tag-bulanan">Aktif</span>':''}</td>
@@ -1820,6 +1898,7 @@ function renderSettingsPage(){
       <div class="card-head">
         <div><h3>Kelola Jabatan</h3><div class="hint">Daftar jabatan induk waka. Dipakai sebagai sumber pilihan jabatan saat menambah data waka.</div></div>
         <div class="toolbar">
+          ${bulkDeleteButton('jabatanList')}
           <button class="btn btn-ghost" onclick="exportJabatanXLSX()">&#8615; Export</button>
           <input type="file" id="importJabatanInput" accept=".xlsx,.xls" style="display:none;" onchange="importJabatanXLSX(this)">
           <button class="btn btn-ghost" onclick="document.getElementById('importJabatanInput').click()">&#8613; Import</button>
@@ -1828,8 +1907,8 @@ function renderSettingsPage(){
       </div>
       <div class="tbl-wrap">
       <table class="tbl-settings">
-        <thead><tr><th class="col-no">No</th><th>Nama Jabatan</th><th class="col-act">Aksi</th></tr></thead>
-        <tbody>${jabatanRows || `<tr class="empty-row"><td colspan="3">Belum ada data jabatan.</td></tr>`}</tbody>
+        <thead><tr>${bulkCheckboxHeaderCell('jabatanList', jabatanList.map(j=>j.id))}<th class="col-no">No</th><th>Nama Jabatan</th><th class="col-act">Aksi</th></tr></thead>
+        <tbody>${jabatanRows || `<tr class="empty-row"><td colspan="${bulkEnabled()?4:3}">Belum ada data jabatan.</td></tr>`}</tbody>
       </table>
       </div>
     </div>
@@ -2000,14 +2079,15 @@ function openModal(title, bodyHtml, onSubmit, hideFooter){
   const root = document.getElementById('modalRoot');
   root.innerHTML = `
     <div class="modal-overlay" id="modalOverlay">
-      <div class="modal-box ${hideFooter?'wide':''}">
+      <div class="modal-box ${hideFooter?'wide':''}" onclick="event.stopPropagation();">
         <div class="modal-head"><h3>${title}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body">${bodyHtml}</div>
         ${onSubmit ? `<div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Batal</button><button class="btn btn-primary" id="modalSubmitBtn">Simpan</button></div>` : ''}
       </div>
     </div>
   `;
-  document.getElementById('modalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='modalOverlay') closeModal(); });
+  document.getElementById('modalOverlay').addEventListener('mousedown', (e)=>{ if(e.target.id==='modalOverlay') e.target.dataset.downOnOverlay='1'; });
+  document.getElementById('modalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='modalOverlay' && e.target.dataset.downOnOverlay==='1') closeModal(); });
   if(onSubmit){
     document.getElementById('modalSubmitBtn').onclick = ()=>{
       const ok = onSubmit();
@@ -2021,14 +2101,15 @@ function confirmModal(msg, onYes, confirmLabel, confirmClass){
   const btnClass = confirmClass || 'btn-danger';
   root.innerHTML = `
     <div class="modal-overlay" id="modalOverlay">
-      <div class="modal-box">
+      <div class="modal-box" onclick="event.stopPropagation();">
         <div class="modal-head"><h3>Konfirmasi</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
         <div class="modal-body"><p style="font-size:14px;margin:0;">${msg}</p></div>
         <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Batal</button><button class="btn ${btnClass}" id="modalYesBtn">${label}</button></div>
       </div>
     </div>
   `;
-  document.getElementById('modalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='modalOverlay') closeModal(); });
+  document.getElementById('modalOverlay').addEventListener('mousedown', (e)=>{ if(e.target.id==='modalOverlay') e.target.dataset.downOnOverlay='1'; });
+  document.getElementById('modalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='modalOverlay' && e.target.dataset.downOnOverlay==='1') closeModal(); });
   document.getElementById('modalYesBtn').onclick = ()=>{ onYes(); closeModal(); };
 }
 function closeModal(){ document.getElementById('modalRoot').innerHTML = ''; }
