@@ -161,6 +161,10 @@ a{color:inherit;}
   width:38px;height:38px;border-radius:8px;border:1px solid var(--line);background:var(--surface);
   display:flex;align-items:center;justify-content:center;font-size:15px;
 }
+.zoom-control{display:flex;align-items:center;border:1px solid var(--line);border-radius:8px;background:var(--surface);overflow:hidden;}
+.zoom-control button{width:32px;height:38px;border:none;background:transparent;font-size:15px;font-weight:700;color:var(--ink);cursor:pointer;}
+.zoom-control button:hover{background:var(--surface-2);}
+.zoom-control .zoom-value{width:44px;text-align:center;font-size:12px;color:var(--muted);border-left:1px solid var(--line);border-right:1px solid var(--line);height:38px;display:flex;align-items:center;justify-content:center;}
 .content{padding:26px;flex:1;overflow-y:auto;}
 
 /* ---------- DASHBOARD ---------- */
@@ -326,6 +330,11 @@ input[type="month"]::-webkit-calendar-picker-indicator{
         <h2 id="pageTitle">Dashboard</h2>
       </div>
       <div class="topbar-right">
+        <div class="zoom-control" title="Perbesar/perkecil tampilan">
+          <button onclick="zoomOut()">&#8722;</button>
+          <span class="zoom-value" id="zoomValue">100%</span>
+          <button onclick="zoomIn()">+</button>
+        </div>
         <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Ganti tema">&#9788;</button>
       </div>
     </div>
@@ -701,6 +710,30 @@ function setTheme(t){
   settings.theme = t;
   save('settings', settings);
   applyTheme();
+}
+
+/* =========================================================
+   ZOOM TAMPILAN
+   Preferensi tampilan per perangkat saja (seperti tema), tidak
+   disinkronkan ke Google Sheets.
+========================================================= */
+const ZOOM_MIN = 80, ZOOM_MAX = 150, ZOOM_STEP = 10;
+function getZoomLevel(){ return loadLocalCache('zoom', 100); }
+function applyZoom(){
+  const level = getZoomLevel();
+  document.documentElement.style.zoom = (level/100);
+  const el = document.getElementById('zoomValue');
+  if(el) el.textContent = level + '%';
+}
+function zoomIn(){
+  const level = Math.min(ZOOM_MAX, getZoomLevel()+ZOOM_STEP);
+  saveLocalCache('zoom', level);
+  applyZoom();
+}
+function zoomOut(){
+  const level = Math.max(ZOOM_MIN, getZoomLevel()-ZOOM_STEP);
+  saveLocalCache('zoom', level);
+  applyZoom();
 }
 
 /* =========================================================
@@ -2121,6 +2154,7 @@ function enterApp(){
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('app').classList.add('active');
   applyTheme();
+  applyZoom();
   const saved = loadLocalCache('route', null);
   if(saved && saved.menu && MENU_DEFS.find(m=>m.key===saved.menu) && canAccess(saved.menu)){
     route = saved;
@@ -2130,6 +2164,7 @@ function enterApp(){
   render();
 }
 applyTheme();
+applyZoom();
 (async function bootstrap(){
   await initDB();
   const btn = document.getElementById('loginSubmitBtn');
