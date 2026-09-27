@@ -1870,7 +1870,7 @@ function renderAksesPage(){
   const fiturRows = fitur.map(m=>`
     <tr>
       <td>${m.label}</td>
-      ${roles.map(r=>`<td><input type="checkbox" class="chk" data-role="${r}" data-menu="${m.key}" ${perms[r]&&perms[r][m.key]?'checked':''} onchange="onAksesChange(this)" ${r==='admin'?'disabled':''}></td>`).join('')}
+      ${roles.map(r=>`<td><input type="checkbox" class="chk" data-role="${r}" data-menu="${m.key}" ${perms[r]&&perms[r][m.key]?'checked':''} onchange="onAksesChange(this)"></td>`).join('')}
     </tr>`).join('');
   return `
     <div class="card">
