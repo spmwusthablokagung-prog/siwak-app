@@ -544,9 +544,9 @@ function defaultValueFor(key){
       {id:'seed-user-waka1', username:'waka1', password:'waka123', role:'waka', jabatan:'Waka Kurikulum'}
     ];
     case 'permissions': return {
-      'admin':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:true, pengaturan:true, tambahProgram:true, hapusMassal:true},
-      'kepala sekolah':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false, hapusMassal:false},
-      'waka':{dashboard:true, approve:false, waka:false, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false, hapusMassal:false}
+      'admin':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:true, pengaturan:true, tambahProgram:true, hapusMassal:true, shareWA:true},
+      'kepala sekolah':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false, hapusMassal:false, shareWA:true},
+      'waka':{dashboard:true, approve:false, waka:false, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false, hapusMassal:false, shareWA:true}
     };
     case 'settings': return {tahunAjaran:['2024/2025','2025/2026'], tahunAktif:'2025/2026', theme:'light'};
     default: return undefined;
@@ -571,11 +571,13 @@ function migratePermissionsIfNeeded(){
   const defaults = {admin:true, 'kepala sekolah':true, waka:false};
   const tambahProgramDefaults = {admin:true, 'kepala sekolah':false, waka:false};
   const hapusMassalDefaults = {admin:true, 'kepala sekolah':false, waka:false};
+  const shareWADefaults = {admin:true, 'kepala sekolah':true, waka:true};
   Object.keys(defaults).forEach(role=>{
     if(perms[role] && perms[role].approve===undefined){ perms[role].approve = defaults[role]; changed = true; }
     if(perms[role] && perms[role].programHarian===undefined){ perms[role].programHarian = true; changed = true; }
     if(perms[role] && perms[role].tambahProgram===undefined){ perms[role].tambahProgram = tambahProgramDefaults[role]; changed = true; }
     if(perms[role] && perms[role].hapusMassal===undefined){ perms[role].hapusMassal = hapusMassalDefaults[role]; changed = true; }
+    if(perms[role] && perms[role].shareWA===undefined){ perms[role].shareWA = shareWADefaults[role]; changed = true; }
   });
   if(changed) save('permissions', perms);
 }
@@ -1197,7 +1199,7 @@ function renderProgramHarianPage(){
           <label style="font-size:12.5px;color:var(--muted);margin-right:2px;">Tanggal:</label>
           <input type="date" value="${selectedDate}" onchange="onHarianDateChange(this.value)">
           ${selectedDate!==todayStr() ? `<button class="btn btn-ghost btn-sm" onclick="onHarianDateChange('${todayStr()}')">Hari Ini</button>` : ''}
-          <button class="btn" style="background:#25D366;color:#fff;" onclick="shareHarianWA()">&#128172; Share WA</button>
+          ${canAccess('shareWA') ? `<button class="btn" style="background:#25D366;color:#fff;" onclick="shareHarianWA()">&#128172; Share WA</button>` : ''}
           ${bulkDeleteButton('programsHarian')}
           ${isWaka ? '' : `
           <button class="btn btn-ghost" onclick="exportProgramXLSX('harian')">&#8615; Export</button>
@@ -1860,7 +1862,8 @@ function renderAksesPage(){
   const menus = [{key:'dashboard',label:'Dashboard'},{key:'approve',label:'Approve Program'},{key:'waka',label:'Data Waka'},{key:'program',label:'Data Program'},{key:'programHarian',label:'Program Harian'},{key:'rekap',label:'Rekap Program'},{key:'user',label:'User'},{key:'pengaturan',label:'Pengaturan'}];
   const fitur = [
     {key:'tambahProgram',label:'Tombol Tambah Program (menu Data Program &amp; Program Harian)'},
-    {key:'hapusMassal',label:'Centang &amp; Hapus Massal di Semua Tabel'}
+    {key:'hapusMassal',label:'Centang &amp; Hapus Massal di Semua Tabel'},
+    {key:'shareWA',label:'Tombol Share WA (menu Program Harian)'}
   ];
   const rows = menus.map(m=>`
     <tr>
