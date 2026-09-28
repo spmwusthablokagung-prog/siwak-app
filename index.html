@@ -88,6 +88,11 @@ a{color:inherit;}
 .login-card h1{font-size:22px;margin-bottom:4px;}
 .login-card p.sub{color:var(--muted);font-size:13.5px;margin:0 0 22px;}
 .field{margin-bottom:16px;}
+.pw-field{position:relative;}
+.pw-field input{padding-right:46px !important;}
+.pw-eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:34px;height:34px;border:none;background:transparent;font-size:16px;border-radius:8px;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.pw-eye:hover{background:var(--surface-2);}
+.pw-eye.on{color:var(--primary-2);}
 .field label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:6px;letter-spacing:.01em;}
 .field input, .field select, .field textarea{
   width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);
@@ -213,6 +218,7 @@ tbody tr:hover{background:var(--surface-2);}
 .tag-role-kepsek{background:var(--accent-soft);color:var(--accent);}
 .tag-role-waka{background:var(--primary-soft);color:var(--primary-2);}
 .row-actions{display:flex;gap:6px;flex-wrap:nowrap;white-space:nowrap;}
+.row-actions.center{justify-content:center;}
 .link-count{background:none;border:none;color:var(--primary-2);font-weight:700;font-size:14px;text-decoration:underline;padding:0;}
 
 .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
@@ -307,7 +313,10 @@ input[type="month"]::-webkit-calendar-picker-indicator{
     </div>
     <div class="field">
       <label>Password</label>
-      <input type="password" id="loginPass" placeholder="Masukkan password">
+      <div class="pw-field">
+        <input type="password" id="loginPass" placeholder="Masukkan password">
+        <button type="button" class="pw-eye" id="loginPassToggle" onclick="toggleLoginPassword()" title="Lihat password" aria-label="Lihat password">&#128065;</button>
+      </div>
     </div>
     <button class="btn btn-primary btn-block" id="loginSubmitBtn" onclick="doLogin()" disabled>Memuat data&hellip;</button>
     <div class="login-hint" id="loginSyncStatus" style="display:none;color:var(--danger);"></div>
@@ -550,9 +559,9 @@ function defaultValueFor(key){
       {id:'seed-user-waka1', username:'waka1', password:'waka123', role:'waka', jabatan:'Waka Kurikulum'}
     ];
     case 'permissions': return {
-      'admin':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:true, pengaturan:true, tambahProgram:true, hapusMassal:true, shareWA:true},
-      'kepala sekolah':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false, hapusMassal:false, shareWA:true},
-      'waka':{dashboard:true, approve:false, waka:false, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false, hapusMassal:false, shareWA:true}
+      'admin':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:true, pengaturan:true, tambahProgram:true, hapusMassal:true, shareWA:true, selesaiSemua:true},
+      'kepala sekolah':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false, hapusMassal:false, shareWA:true, selesaiSemua:true},
+      'waka':{dashboard:true, approve:false, waka:false, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false, hapusMassal:false, shareWA:true, selesaiSemua:true}
     };
     case 'settings': return {tahunAjaran:['2024/2025','2025/2026'], tahunAktif:'2025/2026', theme:'light'};
     default: return undefined;
@@ -584,6 +593,7 @@ function migratePermissionsIfNeeded(){
     if(perms[role] && perms[role].tambahProgram===undefined){ perms[role].tambahProgram = tambahProgramDefaults[role]; changed = true; }
     if(perms[role] && perms[role].hapusMassal===undefined){ perms[role].hapusMassal = hapusMassalDefaults[role]; changed = true; }
     if(perms[role] && perms[role].shareWA===undefined){ perms[role].shareWA = shareWADefaults[role]; changed = true; }
+    if(perms[role] && perms[role].selesaiSemua===undefined){ perms[role].selesaiSemua = true; changed = true; }
   });
   if(changed) save('permissions', perms);
 }
@@ -593,13 +603,68 @@ function migratePermissionsIfNeeded(){
 ========================================================= */
 let session = loadSession(null);
 
-function doLogin(){
+/* =========================================================
+   BATASAN LOGIN: satu browser hanya boleh masuk ke satu akun.
+   Setiap tab yang sedang login memegang "kunci" (Web Locks API) atas
+   akunnya; kunci otomatis lepas saat tab ditutup. Kalau kunci akun lain
+   masih dipegang tab lain di browser ini, login ke akun berbeda ditolak
+   sampai akun tersebut logout. Cadangan (jika Web Locks tidak tersedia):
+   penanda di localStorage yang diperbarui berkala.
+========================================================= */
+const LOGIN_LOCK_PREFIX = 'simonev-login:';
+let _releaseLoginLock = null;
+let _loginBeatTimer = null;
+async function getOtherActiveAccount(userId){
+  try{
+    if(navigator.locks && navigator.locks.query){
+      const st = await navigator.locks.query();
+      const names = (st.held||[]).map(l=>l.name).filter(n=>n && n.indexOf(LOGIN_LOCK_PREFIX)===0);
+      const other = names.find(n=>n!==LOGIN_LOCK_PREFIX+userId);
+      return other ? other.slice(LOGIN_LOCK_PREFIX.length) : null;
+    }
+  }catch(e){ console.warn('Web Locks tidak dapat dipakai, memakai cadangan', e); }
+  const m = loadLocalCache('activeLogin', null);
+  if(m && m.userId!==userId && (Date.now()-m.ts) < 40000) return m.userId;
+  return null;
+}
+function holdLoginLock(userId){
+  releaseLoginLock();
+  if(navigator.locks && navigator.locks.request){
+    navigator.locks.request(LOGIN_LOCK_PREFIX+userId, {mode:'shared'}, ()=>new Promise(res=>{ _releaseLoginLock = res; }));
+  } else {
+    const beat = ()=>saveLocalCache('activeLogin', {userId:userId, ts:Date.now()});
+    beat();
+    _loginBeatTimer = setInterval(beat, 5000);
+    _releaseLoginLock = ()=>{ clearInterval(_loginBeatTimer); _loginBeatTimer = null; try{ localStorage.removeItem(DB_PREFIX+'activeLogin'); }catch(e){} };
+  }
+}
+function releaseLoginLock(){
+  if(_releaseLoginLock){ const r = _releaseLoginLock; _releaseLoginLock = null; r(); }
+}
+function toggleLoginPassword(){
+  const input = document.getElementById('loginPass');
+  const btn = document.getElementById('loginPassToggle');
+  const show = input.type==='password';
+  input.type = show ? 'text' : 'password';
+  btn.classList.toggle('on', show);
+  btn.title = show ? 'Sembunyikan password' : 'Lihat password';
+  btn.setAttribute('aria-label', btn.title);
+  input.focus();
+}
+async function doLogin(){
   const u = document.getElementById('loginUser').value.trim();
   const p = document.getElementById('loginPass').value;
   const users = load('users', []);
   const found = users.find(x=>x.username===u && x.password===p);
   const err = document.getElementById('loginError');
-  if(!found){ err.style.display='block'; return; }
+  if(!found){ err.textContent = 'Username atau password salah.'; err.style.display='block'; return; }
+  const otherId = await getOtherActiveAccount(found.id);
+  if(otherId){
+    const other = users.find(x=>x.id===otherId);
+    err.textContent = 'Browser ini masih login sebagai "' + (other ? other.username : 'akun lain') + '". Logout dulu dari akun tersebut sebelum masuk ke akun lain.';
+    err.style.display='block';
+    return;
+  }
   err.style.display='none';
   session = {userId:found.id, username:found.username, role:found.role};
   save('session', session);
@@ -610,14 +675,26 @@ function confirmLogout(){
     doLogout();
   }, 'Ya, Keluar', 'btn-primary');
 }
-function doLogout(){
+function showLoginScreen(){
   session = null;
   save('session', null);
+  releaseLoginLock();
   document.getElementById('app').classList.remove('active');
   document.getElementById('loginScreen').style.display='flex';
   document.getElementById('loginUser').value='';
   document.getElementById('loginPass').value='';
+  document.getElementById('loginPass').type='password';
+  const eye = document.getElementById('loginPassToggle');
+  if(eye){ eye.classList.remove('on'); eye.title='Lihat password'; }
 }
+function doLogout(){
+  showLoginScreen();
+  /* Beritahu tab lain di browser ini: logout berlaku untuk seluruh browser */
+  saveLocalCache('logoutSignal', Date.now());
+}
+window.addEventListener('storage', (e)=>{
+  if(e.key===DB_PREFIX+'logoutSignal' && session) showLoginScreen();
+});
 function canAccess(menu){
   const perms = load('permissions', {});
   if(!session) return false;
@@ -967,6 +1044,7 @@ function renderWakaPage(){
       <td>${escapeHtml(w.nama)}</td>
       <td>${escapeHtml(w.jabatan)}</td>
       <td>${escapeHtml(w.tahun)}</td>
+      <td>${escapeHtml(w.email||'-')}</td>
       <td><div class="row-actions">
         <button class="btn btn-ghost btn-sm" onclick="openWakaModal('${w.id}')">Edit</button>
         <button class="btn btn-danger btn-sm" onclick="deleteWaka('${w.id}')">Hapus</button>
@@ -986,13 +1064,14 @@ function renderWakaPage(){
       </div>
       <div class="tbl-wrap">
       <table>
-        <thead><tr>${bulkCheckboxHeaderCell('wakas', wakas.map(w=>w.id))}<th style="width:50px;">No</th><th style="width:340px;">Nama</th><th>Jabatan</th><th style="width:140px;">Tahun Menjabat</th><th style="width:150px;">Aksi</th></tr></thead>
-        <tbody>${rows || `<tr class="empty-row"><td colspan="${bulkEnabled()?6:5}">Belum ada data waka.</td></tr>`}</tbody>
+        <thead><tr>${bulkCheckboxHeaderCell('wakas', wakas.map(w=>w.id))}<th style="width:50px;">No</th><th style="width:340px;">Nama</th><th>Jabatan</th><th style="width:140px;">Tahun Menjabat</th><th style="width:240px;">Email</th><th style="width:150px;">Aksi</th></tr></thead>
+        <tbody>${rows || `<tr class="empty-row"><td colspan="${bulkEnabled()?7:6}">Belum ada data waka.</td></tr>`}</tbody>
       </table>
       </div>
     </div>
   `;
 }
+function isValidEmail(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
 function openWakaModal(id){
   const wakas = load('wakas', []);
   const jabatanList = load('jabatanList', []);
@@ -1009,19 +1088,22 @@ function openWakaModal(id){
       </select>`}
     </div>
     <div class="field"><label>Tahun Menjabat</label><input type="text" id="fWakaTahun" value="${w?escapeHtml(w.tahun):''}" placeholder="Contoh: 2025"></div>
+    <div class="field"><label>Email <span style="font-weight:400;color:var(--muted);">(opsional)</span></label><input type="email" id="fWakaEmail" value="${w?escapeHtml(w.email||''):''}" placeholder="nama@email.com"></div>
   `;
   openModal(id?'Edit Data Waka':'Tambah Data Waka', body, ()=>{
     const nama = document.getElementById('fWakaNama').value.trim();
     const jabatanEl = document.getElementById('fWakaJabatan');
     const jabatan = jabatanEl ? jabatanEl.value.trim() : '';
     const tahun = document.getElementById('fWakaTahun').value.trim();
-    if(!nama || !jabatan || !tahun){ toast('Semua kolom wajib diisi'); return false; }
+    const email = document.getElementById('fWakaEmail').value.trim();
+    if(!nama || !jabatan || !tahun){ toast('Nama, jabatan, dan tahun menjabat wajib diisi'); return false; }
+    if(email && !isValidEmail(email)){ toast('Format email tidak valid'); return false; }
     const list = load('wakas', []);
     if(w){
       const idx = list.findIndex(x=>x.id===id);
-      list[idx] = {...list[idx], nama, jabatan, tahun};
+      list[idx] = {...list[idx], nama, jabatan, tahun, email};
     } else {
-      list.push({id:uid(), nama, jabatan, tahun});
+      list.push({id:uid(), nama, jabatan, tahun, email});
     }
     save('wakas', list);
     render();
@@ -1040,8 +1122,8 @@ function exportWakaXLSX(){
   const wakas = load('wakas', []);
   if(wakas.length===0){ toast('Tidak ada data untuk diexport'); return; }
   if(typeof XLSX==='undefined'){ toast('Gagal memuat modul Excel, coba muat ulang halaman'); return; }
-  const header = ['Nama','Jabatan','Tahun Menjabat'];
-  const rows = wakas.map(w=>[w.nama, w.jabatan, w.tahun]);
+  const header = ['Nama','Jabatan','Tahun Menjabat','Email'];
+  const rows = wakas.map(w=>[w.nama, w.jabatan, w.tahun, w.email||'']);
   const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Data Waka');
@@ -1067,21 +1149,24 @@ function importWakaXLSX(input){
     const jabatanList = load('jabatanList', []);
     const jabatanNames = jabatanList.map(j=>j.nama.trim().toLowerCase());
     const list = load('wakas', []);
-    let added = 0, skipped = 0, unmatchedJabatan = 0;
+    let added = 0, skipped = 0, unmatchedJabatan = 0, invalidEmail = 0;
     for(let i=1;i<rows.length;i++){
       const cols = rows[i].map(v=>String(v==null?'':v).trim());
       const nama = (cols[0]||'').trim();
       const jabatan = (cols[1]||'').trim();
       const tahun = (cols[2]||'').trim();
+      let email = (cols[3]||'').trim();
       if(!nama || !jabatan || !tahun){ skipped++; continue; }
       if(!jabatanNames.includes(jabatan.toLowerCase())) unmatchedJabatan++;
-      list.push({id:uid(), nama, jabatan, tahun});
+      if(email && !isValidEmail(email)){ invalidEmail++; email = ''; }
+      list.push({id:uid(), nama, jabatan, tahun, email});
       added++;
     }
     save('wakas', list);
     render();
     let msg = added + ' data waka berhasil diimpor';
     if(unmatchedJabatan>0) msg += ', ' + unmatchedJabatan + ' jabatan belum terdaftar di Kelola Jabatan';
+    if(invalidEmail>0) msg += ', ' + invalidEmail + ' email tidak valid dikosongkan';
     if(skipped>0) msg += ', ' + skipped + ' baris dilewati (kolom belum lengkap)';
     toast(msg);
   };
@@ -1134,7 +1219,7 @@ function renderProgramPage(){
       <td>${escapeHtml(p.nama)}</td>
       <td>${escapeHtml(wakaMap[p.wakaId] || '-')}</td>
       <td><span class="tag tag-${p.jenis}">${jenisLabel(p.jenis)}</span></td>
-      <td><div class="row-actions">
+      <td><div class="row-actions center">
         ${ajukanBtn}
         ${isKepsek || isLocked ? '' : `<button class="btn btn-ghost btn-sm" onclick="openProgramModal('${p.id}')">Edit</button>`}
         ${isKepsek ? '' : `<button class="btn btn-danger btn-sm" onclick="deleteProgram('${p.id}')">Hapus</button>`}
@@ -1157,7 +1242,7 @@ function renderProgramPage(){
       </div>
       <div class="tbl-wrap">
       <table>
-        <thead><tr>${bulkCheckboxHeaderCell('programs', programs.map(p=>p.id))}<th style="width:50px;">No</th><th style="width:230px;">Nama Program</th><th style="width:170px;">Waka</th><th style="width:120px;">Jenis</th><th style="width:290px;">Aksi</th></tr></thead>
+        <thead><tr>${bulkCheckboxHeaderCell('programs', programs.map(p=>p.id))}<th style="width:50px;">No</th><th style="width:230px;">Nama Program</th><th style="width:170px;">Waka</th><th style="width:120px;">Jenis</th><th style="width:290px;text-align:center;">Aksi</th></tr></thead>
         <tbody>${rows || `<tr class="empty-row"><td colspan="${bulkEnabled()?6:5}">Belum ada data program.</td></tr>`}</tbody>
       </table>
       </div>
@@ -1174,6 +1259,11 @@ function renderProgramHarianPage(){
   const wakaMap = {};
   wakas.forEach(w=>wakaMap[w.id]=w.nama);
   if(isWaka) programs = programs.filter(p=>p.wakaId===myWakaId);
+  const eligiblePrograms = programs.filter(p=>!!wakaMap[p.wakaId]);
+  const allDone = eligiblePrograms.length>0 && eligiblePrograms.every(p=>{
+    const cur = submissions.find(s=>s.programId===p.id && s.periode===selectedDate);
+    return !!cur && cur.status!=='ditolak';
+  });
   const rows = programs.map((p,i)=>{
     const current = submissions.find(s=>s.programId===p.id && s.periode===selectedDate);
     const isChecked = !!current && current.status!=='ditolak';
@@ -1203,7 +1293,7 @@ function renderProgramHarianPage(){
       </td>
       <td style="font-size:13px;">${waktu}</td>
       <td>${ketepatan}</td>
-      <td><div class="row-actions">
+      <td><div class="row-actions center">
         <button class="btn btn-ghost btn-sm" onclick="openProgramModal('${p.id}')">Edit</button>
         <button class="btn btn-danger btn-sm" onclick="deleteProgram('${p.id}')">Hapus</button>
       </div></td>
@@ -1218,6 +1308,7 @@ function renderProgramHarianPage(){
           <label style="font-size:12.5px;color:var(--muted);margin-right:2px;">Tanggal:</label>
           <input type="date" value="${selectedDate}" onchange="onHarianDateChange(this.value)">
           ${selectedDate!==todayStr() ? `<button class="btn btn-ghost btn-sm" onclick="onHarianDateChange('${todayStr()}')">Hari Ini</button>` : ''}
+          ${canAccess('selesaiSemua') ? `<button class="btn btn-accent" onclick="checkAllHarianSelesai()">&#10003; Centang Selesai Semua</button>` : ''}
           ${canAccess('shareWA') ? `<button class="btn" style="background:#25D366;color:#fff;" onclick="shareHarianWA()">&#128172; Share WA</button>` : ''}
           ${bulkDeleteButton('programsHarian')}
           ${isWaka ? '' : `
@@ -1229,7 +1320,7 @@ function renderProgramHarianPage(){
       </div>
       <div class="tbl-wrap">
       <table>
-        <thead><tr>${bulkCheckboxHeaderCell('programsHarian', programs.map(p=>p.id))}<th style="width:50px;">No</th><th style="width:190px;">Nama Program</th><th style="width:140px;">Waka</th><th style="width:140px;">Selesai</th><th style="width:160px;">Tanggal &amp; Jam</th><th style="width:130px;">Status</th><th style="width:150px;">Aksi</th></tr></thead>
+        <thead><tr>${bulkCheckboxHeaderCell('programsHarian', programs.map(p=>p.id))}<th style="width:50px;">No</th><th style="width:190px;">Nama Program</th><th style="width:140px;">Waka</th><th style="width:170px;">${canAccess('selesaiSemua') ? `<label style="display:flex;align-items:center;gap:8px;cursor:${eligiblePrograms.length>0?'pointer':'not-allowed'};font-weight:inherit;"><input type="checkbox" class="chk" ${allDone?'checked':''} ${eligiblePrograms.length===0?'disabled':''} onchange="toggleHarianSelesaiSemua(this.checked)">Selesai</label>` : 'Selesai'}</th><th style="width:160px;">Tanggal &amp; Jam</th><th style="width:130px;">Status</th><th style="width:150px;text-align:center;">Aksi</th></tr></thead>
         <tbody>${rows || `<tr class="empty-row"><td colspan="${bulkEnabled()?8:7}">Belum ada program harian.</td></tr>`}</tbody>
       </table>
       </div>
@@ -1324,6 +1415,41 @@ function toggleHarianSelesai(programId, checked){
       toast('Tanda selesai dibatalkan');
     }
   }
+  render();
+}
+function checkAllHarianSelesai(){ toggleHarianSelesaiSemua(true); }
+function toggleHarianSelesaiSemua(checked){
+  if(!canAccess('selesaiSemua')){ toast('Fitur ini dinonaktifkan oleh admin'); return; }
+  const isWaka = session && session.role==='waka';
+  const myWakaId = isWaka ? getMyWakaId() : null;
+  const period = window._harianFilterDate || todayStr();
+  const wakaIds = new Set(load('wakas', []).map(w=>w.id));
+  let programs = load('programs', []).filter(p=>p.jenis==='harian');
+  if(isWaka) programs = programs.filter(p=>p.wakaId===myWakaId);
+  const eligible = programs.filter(p=>wakaIds.has(p.wakaId));
+  if(eligible.length===0){ toast('Belum ada program harian dengan waka penanggung jawab'); render(); return; }
+  const list = load('submissions', []);
+  const nowIso = new Date().toISOString();
+  const username = session ? session.username : '';
+  let changed = 0;
+  eligible.forEach(p=>{
+    const idx = list.findIndex(s=>s.programId===p.id && s.periode===period);
+    if(checked){
+      const alreadyDone = idx>=0 && list[idx].status!=='ditolak';
+      if(alreadyDone) return;
+      if(idx>=0){
+        list[idx] = {...list[idx], status:'disetujui', diajukanPada:nowIso, approvedBy:username, approvedAt:nowIso};
+      } else {
+        list.push({id:uid(), programId:p.id, programNama:p.nama, jenis:p.jenis, wakaId:p.wakaId, periode:period, keterangan:'', foto:'', diajukanPada:nowIso, status:'disetujui', catatanApproval:'', approvedBy:username, approvedAt:nowIso});
+      }
+      changed++;
+    } else if(idx>=0 && list[idx].status!=='ditolak'){
+      list.splice(idx,1);
+      changed++;
+    }
+  });
+  if(changed>0) save('submissions', list);
+  toast(checked ? (changed>0 ? changed+' program ditandai selesai' : 'Semua program sudah ditandai selesai') : (changed>0 ? 'Tanda selesai dibatalkan untuk '+changed+' program' : 'Tidak ada tanda selesai yang perlu dibatalkan'));
   render();
 }
 function exportProgramXLSX(mode){
@@ -1451,6 +1577,47 @@ function deleteProgram(id){
     toast('Program dihapus');
   });
 }
+/* =========================================================
+   NOTIFIKASI EMAIL (dikirim lewat Apps Script)
+   - Waka mengajukan program  -> email ke kepala sekolah
+   - Kepala sekolah memutuskan -> email ke waka terkait
+========================================================= */
+function formatTanggalWaktuWIB(iso){
+  const d = iso ? new Date(iso) : new Date();
+  const tanggal = d.toLocaleDateString('id-ID', {timeZone:'Asia/Jakarta', day:'numeric', month:'long', year:'numeric'});
+  const waktu = d.toLocaleTimeString('id-ID', {timeZone:'Asia/Jakarta', hour:'2-digit', minute:'2-digit', hour12:false}).replace('.', ':') + ' WIB';
+  return {tanggal, waktu};
+}
+function sendEmailNotification(kind, to, fields){
+  return apiPost(Object.assign({action:'notify', kind:kind, to:to}, fields)).then(res=>{
+    if(!res || !res.ok) throw new Error((res && res.error) || 'Gagal mengirim email');
+    return true;
+  }).catch(err=>{
+    console.error('Notifikasi email gagal', err);
+    toast('Notifikasi email gagal terkirim: ' + err.message);
+    return false;
+  });
+}
+function hintEmail(msg){ setTimeout(()=>toast(msg), 2200); }
+function notifyKepsekPengajuan(sub){
+  if(!isApiConfigured()) return;
+  const w = load('wakas', []).find(x=>x.id===sub.wakaId) || null;
+  const seen = {};
+  const penerima = load('users', []).filter(u=>u.role==='kepala sekolah' && u.email && isValidEmail(u.email))
+    .map(u=>u.email.trim()).filter(e=>{ const k=e.toLowerCase(); if(seen[k]) return false; seen[k]=true; return true; });
+  if(penerima.length===0){ hintEmail('Email kepala sekolah belum diisi (menu User > Akun), notifikasi email tidak dikirim'); return; }
+  const wt = formatTanggalWaktuWIB(sub.diajukanPada);
+  penerima.forEach(to=>{
+    sendEmailNotification('pengajuan', to, {namaWaka: w?w.nama:'-', jabatan: w?w.jabatan:'-', tanggal:wt.tanggal, waktu:wt.waktu, program:sub.programNama});
+  });
+}
+function notifyWakaKeputusan(sub){
+  if(!isApiConfigured()) return;
+  const w = load('wakas', []).find(x=>x.id===sub.wakaId) || null;
+  if(!w || !w.email || !isValidEmail(w.email)){ hintEmail('Email waka belum diisi (menu Data Waka), notifikasi email tidak dikirim'); return; }
+  const wt = formatTanggalWaktuWIB(sub.approvedAt);
+  sendEmailNotification('keputusan', w.email.trim(), {namaWaka:w.nama, jabatan:w.jabatan, tanggal:wt.tanggal, waktu:wt.waktu, program:sub.programNama, ket:sub.status});
+}
 function openAjukanModal(programId){
   const programs = load('programs', []);
   const wakas = load('wakas', []);
@@ -1488,6 +1655,7 @@ function openAjukanModal(programId){
     save('submissions', list);
     render();
     toast('Program berhasil diajukan');
+    notifyKepsekPengajuan(list[list.length-1]);
     return true;
   });
 }
@@ -1577,7 +1745,7 @@ function renderApprovePage(){
       <td>${escapeHtml(wakaMap[s.wakaId]||'(waka dihapus)')}</td>
       <td>${formatDateOnly(s.diajukanPada)}</td>
       <td>${submissionStatusTag(s.status||'pending')}${catatan}</td>
-      <td><div class="row-actions">
+      <td><div class="row-actions center">
         ${s.foto ? `<button class="btn btn-ghost btn-sm" onclick="openFotoDetail('${s.id}')">&#128247; Foto</button>` : ''}
         <button class="btn btn-primary btn-sm" onclick="openApproveDecisionModal('${s.id}','disetujui')">Setujui</button>
         <button class="btn btn-danger btn-sm" onclick="openApproveDecisionModal('${s.id}','ditolak')">Tolak</button>
@@ -1608,7 +1776,7 @@ function renderApprovePage(){
       ${adminToolbar ? `<div class="card-head" style="border-top:1px solid var(--line);">${adminToolbar}</div>` : ''}
       <div class="tbl-wrap">
       <table>
-        <thead><tr>${checkboxTh}<th style="width:50px;">No</th><th style="width:220px;">Program</th><th style="width:170px;">Nama Waka</th><th style="width:130px;">Tanggal</th><th style="width:220px;">Status</th><th style="width:220px;">Aksi</th></tr></thead>
+        <thead><tr>${checkboxTh}<th style="width:50px;">No</th><th style="width:220px;">Program</th><th style="width:170px;">Nama Waka</th><th style="width:130px;">Tanggal</th><th style="width:220px;">Status</th><th style="width:220px;text-align:center;">Aksi</th></tr></thead>
         <tbody>${rows || `<tr class="empty-row"><td colspan="${colCount}">Belum ada program yang diajukan.</td></tr>`}</tbody>
       </table>
       </div>
@@ -1670,6 +1838,7 @@ function openApproveDecisionModal(subId, decision){
     save('submissions', list);
     render();
     toast(isApprove?'Program disetujui':'Program ditolak');
+    notifyWakaKeputusan(list[idx]);
     return true;
   });
 }
@@ -1715,7 +1884,7 @@ function renderRekapPage(sub){
         <td>
           <div style="display:flex;align-items:center;gap:8px;">
             <div class="pbar-track" style="flex:1;margin-bottom:0;"><div class="pbar-fill" style="width:${Math.min(pct,100)}%"></div></div>
-            <b style="font-family:var(--font-head);font-size:14px;white-space:nowrap;">${pct}%</b>
+            <b style="font-family:var(--font-head);font-size:14px;white-space:nowrap;width:46px;text-align:center;flex-shrink:0;">${pct}%</b>
           </div>
         </td>
       </tr>`;
@@ -1734,7 +1903,7 @@ function renderRekapPage(sub){
       </div>
       <div class="tbl-wrap">
       <table>
-        <thead><tr><th style="width:50px;">No</th><th style="width:190px;">Nama Waka</th><th style="width:150px;">Jabatan</th><th style="width:140px;">Jumlah Program</th><th style="width:140px;">Jumlah Selesai</th><th style="width:170px;">Prosentase</th></tr></thead>
+        <thead><tr><th style="width:50px;">No</th><th style="width:190px;">Nama Waka</th><th style="width:150px;">Jabatan</th><th style="width:140px;">Jumlah Program</th><th style="width:140px;">Jumlah Selesai</th><th style="width:170px;text-align:center;">Prosentase</th></tr></thead>
         <tbody>${rows || `<tr class="empty-row"><td colspan="6">Belum ada data waka.</td></tr>`}</tbody>
       </table>
       </div>
@@ -1780,8 +1949,9 @@ function renderUserPage(sub){
         <button class="btn btn-ghost btn-sm" style="margin-left:8px;padding:3px 8px;" onclick="togglePasswordPreview('${u.id}')" id="pwBtn-${u.id}" title="Lihat password">&#128065;</button>
       </td>
       <td>${escapeHtml(u.jabatan||'-')}</td>
+      <td>${escapeHtml(u.email||'-')}</td>
       <td><span class="tag tag-role-${u.role==='admin'?'admin':(u.role==='kepala sekolah'?'kepsek':'waka')}">${capitalize(u.role)}</span></td>
-      <td><div class="row-actions">
+      <td><div class="row-actions center">
         <button class="btn btn-ghost btn-sm" onclick="openUserModal('${u.id}')">Edit</button>
         <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}')">Hapus</button>
       </div></td>
@@ -1797,8 +1967,8 @@ function renderUserPage(sub){
       </div>
       <div class="tbl-wrap">
       <table>
-        <thead><tr>${bulkCheckboxHeaderCell('users', users.filter(u=>u.id!==(session&&session.userId)).map(u=>u.id))}<th style="width:50px;">No</th><th style="width:160px;">Username</th><th>Password</th><th style="width:190px;">Jabatan</th><th style="width:140px;">Role</th><th style="width:150px;">Aksi</th></tr></thead>
-        <tbody>${rows || `<tr class="empty-row"><td colspan="${bulkEnabled()?7:6}">Belum ada akun.</td></tr>`}</tbody>
+        <thead><tr>${bulkCheckboxHeaderCell('users', users.filter(u=>u.id!==(session&&session.userId)).map(u=>u.id))}<th style="width:50px;">No</th><th style="width:160px;">Username</th><th style="width:290px;">Password</th><th style="width:290px;">Jabatan</th><th style="width:240px;">Email</th><th style="width:140px;">Role</th><th style="width:150px;text-align:center;">Aksi</th></tr></thead>
+        <tbody>${rows || `<tr class="empty-row"><td colspan="${bulkEnabled()?8:7}">Belum ada akun.</td></tr>`}</tbody>
       </table>
       </div>
     </div>
@@ -1844,21 +2014,24 @@ function openUserModal(id){
         <option value="waka" ${u&&u.role==='waka'?'selected':''}>Waka</option>
       </select>
     </div>
+    <div class="field"><label>Email <span style="font-weight:400;color:var(--muted);">(opsional, dipakai untuk notifikasi)</span></label><input type="email" id="fUserEmail" value="${u?escapeHtml(u.email||''):''}" placeholder="nama@email.com"></div>
   `;
   openModal(id?'Edit Akun':'Tambah Akun', body, ()=>{
     const username = document.getElementById('fUserUsername').value.trim();
     const password = document.getElementById('fUserPassword').value;
     const jabatan = document.getElementById('fUserJabatan').value.trim();
     const role = document.getElementById('fUserRole').value;
+    const email = document.getElementById('fUserEmail').value.trim();
     if(!username || !password){ toast('Username dan password wajib diisi'); return false; }
+    if(email && !isValidEmail(email)){ toast('Format email tidak valid'); return false; }
     const list = load('users', []);
     const dup = list.find(x=>x.username===username && x.id!==id);
     if(dup){ toast('Username sudah digunakan'); return false; }
     if(u){
       const idx = list.findIndex(x=>x.id===id);
-      list[idx] = {...list[idx], username, password, jabatan, role};
+      list[idx] = {...list[idx], username, password, jabatan, role, email};
     } else {
-      list.push({id:uid(), username, password, jabatan, role});
+      list.push({id:uid(), username, password, jabatan, role, email});
     }
     save('users', list);
     render();
@@ -1882,7 +2055,8 @@ function renderAksesPage(){
   const fitur = [
     {key:'tambahProgram',label:'Tombol Tambah Program (menu Data Program &amp; Program Harian)'},
     {key:'hapusMassal',label:'Centang &amp; Hapus Massal di Semua Tabel'},
-    {key:'shareWA',label:'Tombol Share WA (menu Program Harian)'}
+    {key:'shareWA',label:'Tombol Share WA (menu Program Harian)'},
+    {key:'selesaiSemua',label:'Centang Selesai Semua (menu Program Harian)'}
   ];
   const rows = menus.map(m=>`
     <tr>
@@ -2172,6 +2346,7 @@ function closeModal(){ document.getElementById('modalRoot').innerHTML = ''; }
    BOOTSTRAP
 ========================================================= */
 function enterApp(){
+  if(session) holdLoginLock(session.userId);
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('app').classList.add('active');
   applyTheme();
