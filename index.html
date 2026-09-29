@@ -1326,7 +1326,7 @@ function renderProgramHarianPage(){
       </div>
       <div class="tbl-wrap">
       <table>
-        <thead><tr>${bulkCheckboxHeaderCell('programsHarian', programs.map(p=>p.id))}<th style="width:50px;">No</th><th style="width:190px;">Nama Program</th><th style="width:140px;">Waka</th><th style="width:170px;">${canAccess('selesaiSemua') ? `<label style="display:flex;align-items:center;gap:8px;cursor:${eligiblePrograms.length>0?'pointer':'not-allowed'};font-weight:inherit;"><input type="checkbox" class="chk" ${allDone?'checked':''} ${eligiblePrograms.length===0?'disabled':''} onchange="toggleHarianSelesaiSemua(this.checked)">Selesai</label>` : 'Selesai'}</th><th style="width:160px;">Tanggal &amp; Jam</th><th style="width:130px;">Status</th><th style="width:150px;text-align:center;">Aksi</th></tr></thead>
+        <thead><tr>${bulkCheckboxHeaderCell('programsHarian', programs.map(p=>p.id))}<th style="width:50px;">No</th><th style="width:190px;">Nama Program</th><th style="width:180px;">Waka</th><th style="width:130px;">${canAccess('selesaiSemua') ? `<label style="display:flex;align-items:center;gap:8px;cursor:${eligiblePrograms.length>0?'pointer':'not-allowed'};font-weight:inherit;"><input type="checkbox" class="chk" ${allDone?'checked':''} ${eligiblePrograms.length===0?'disabled':''} onchange="toggleHarianSelesaiSemua(this.checked)">Selesai</label>` : 'Selesai'}</th><th style="width:160px;">Tanggal &amp; Jam</th><th style="width:130px;">Status</th><th style="width:150px;text-align:center;">Aksi</th></tr></thead>
         <tbody>${rows || `<tr class="empty-row"><td colspan="${bulkEnabled()?8:7}">Belum ada program harian.</td></tr>`}</tbody>
       </table>
       </div>
