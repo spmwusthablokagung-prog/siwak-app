@@ -426,9 +426,12 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 
 /* ---------- Sinkronisasi ke Google Sheets ---------- */
 let _syncQueue = Promise.resolve();
-function showSyncError(msg){
+function showSyncError(msg, withRetry){
   const box = document.getElementById('loginSyncStatus');
-  if(box){ box.style.display='block'; box.textContent = msg; }
+  if(box){
+    box.style.display='block';
+    box.innerHTML = escapeHtml(msg) + (withRetry ? ' <button type="button" class="btn btn-ghost btn-sm" style="margin-left:6px;" onclick="retryConnectAndLogin()">Coba Lagi</button>' : '');
+  }
   if(typeof toast==='function' && document.getElementById('app') && document.getElementById('app').classList.contains('active')){
     toast(msg);
   }
@@ -484,7 +487,7 @@ async function initDB(){
   if(!isApiConfigured()){
     console.warn('API_URL belum diatur di dalam file ini, aplikasi berjalan mode lokal (localStorage) saja.');
     seedLocalOnly();
-    return;
+    return true;
   }
 
   try{
@@ -509,12 +512,15 @@ async function initDB(){
     if(belumPernahDibuat.length>0) seedServerConfirmedEmpty(belumPernahDibuat);
     migratePermissionsIfNeeded();
   }catch(e){
-    console.error('Gagal memuat data dari Google Sheets, memakai data cache lokal', e);
-    showSyncError('Gagal terhubung ke database online. Menampilkan data cache lokal (mungkin belum terbaru). Data TIDAK ditimpa ke server — coba muat ulang saat koneksi stabil.');
-    /* Sengaja TIDAK melakukan seeding atau sinkronisasi apa pun di sini,
-       supaya data asli di server tidak berisiko tertimpa data lokal yang
-       mungkin kosong/usang. */
+    console.error('Gagal memuat data dari Google Sheets', e);
+    /* Data login (users) tersimpan di server, jadi kalau tidak berhasil
+       terhubung, login TIDAK diizinkan - supaya tidak login memakai data
+       user yang mungkin sudah usang/salah dari cache lokal. Sengaja juga
+       TIDAK melakukan seeding atau sinkronisasi apa pun di sini, supaya
+       data asli di server tidak berisiko tertimpa. */
+    return false;
   }
+  return true;
 }
 
 /* =========================================================
@@ -2362,10 +2368,24 @@ function enterApp(){
 }
 applyTheme();
 applyZoom();
-(async function bootstrap(){
-  await initDB();
+async function attemptConnectAndBootstrap(){
   const btn = document.getElementById('loginSubmitBtn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Memuat data\u2026'; }
+  const ok = await initDB();
+  if(!ok){
+    if(btn){ btn.disabled = true; btn.textContent = 'Tidak dapat login'; }
+    showSyncError('Gagal terhubung ke database online. Data akun login tersimpan di server, jadi login tidak dapat dilakukan sampai koneksi berhasil.', true);
+    return false;
+  }
   if(btn){ btn.disabled = false; btn.textContent = 'Masuk'; }
+  const box = document.getElementById('loginSyncStatus');
+  if(box){ box.style.display='none'; box.innerHTML=''; }
+  return true;
+}
+function retryConnectAndLogin(){ attemptConnectAndBootstrap(); }
+(async function bootstrap(){
+  const ok = await attemptConnectAndBootstrap();
+  if(!ok) return;
   if(session){
     const users = load('users', []);
     let match = users.find(x=>x.id===session.userId);
