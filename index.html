@@ -371,7 +371,7 @@ input[type="month"]::-webkit-calendar-picker-indicator{
    lokal (localStorage) seperti semula, jadi tetap aman dicoba
    dulu sebelum database online disiapkan.
 ========================================================= */
-const API_URL = 'https://script.google.com/macros/s/AKfycbwJgH4ISnQpCBKYJudQp4KrAGD5WlZq9DECurPPiRaWktR-JjpxSXhYAzeIxdwsDJdVDQ/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbyncevzFFvJe0otMg5XelH9YnFueVuOYvtja-JUybHPcT7K-EAuMpd50WVt-jC8Lwld3w/exec';
 const API_KEY = 'siwak-muadalah-2026';
 const SYNCED_KEYS = ['jabatanList','permissions','programs','settings','submissions','users','wakas'];
 function isApiConfigured(){ return !!API_URL && API_URL.indexOf('PASTE_URL')!==0; }
@@ -514,7 +514,7 @@ async function initDB(){
   }catch(e){
     console.error('Gagal memuat data dari Google Sheets', e);
     /* Data login (users) tersimpan di server, jadi kalau tidak berhasil
-       terhubung, login TIDAK diizinkan - supaya tidak login memakai data
+       terhubung,  TIDAK diizinkan - supaya tidak login memakai data
        user yang mungkin sudah usang/salah dari cache lokal. Sengaja juga
        TIDAK melakukan seeding atau sinkronisasi apa pun di sini, supaya
        data asli di server tidak berisiko tertimpa. */
