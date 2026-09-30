@@ -217,6 +217,7 @@ tbody tr:hover{background:var(--surface-2);}
 .tag-role-admin{background:var(--danger-soft);color:var(--danger);}
 .tag-role-kepsek{background:var(--accent-soft);color:var(--accent);}
 .tag-role-waka{background:var(--primary-soft);color:var(--primary-2);}
+.tag-role-operator{background:var(--success-soft);color:var(--success);}
 .row-actions{display:flex;gap:6px;flex-wrap:nowrap;white-space:nowrap;}
 .row-actions.center{justify-content:center;}
 .link-count{background:none;border:none;color:var(--primary-2);font-weight:700;font-size:14px;text-decoration:underline;padding:0;}
@@ -419,6 +420,7 @@ function load(key, fallback){
 function save(key, val){
   if(key==='session'){ saveSession(val); return; }
   if(key==='submissions') _submissionsLocalVersion++;
+  if(key==='programs') _programsLocalVersion++;
   DB[key] = val;
   saveLocalCache(key, val);
   queueSync(key, val);
@@ -429,6 +431,8 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 let _syncQueue = Promise.resolve();
 let _pendingSubmissionsSync = 0;
 let _submissionsLocalVersion = 0;
+let _pendingProgramsSync = 0;
+let _programsLocalVersion = 0;
 function showSyncError(msg, withRetry){
   const box = document.getElementById('loginSyncStatus');
   if(box){
@@ -442,8 +446,10 @@ function showSyncError(msg, withRetry){
 function queueSync(key, val){
   if(!isApiConfigured() || !SYNCED_KEYS.includes(key)) return;
   if(key==='submissions') _pendingSubmissionsSync++;
+  if(key==='programs') _pendingProgramsSync++;
   _syncQueue = _syncQueue.then(()=>syncToServer(key, val)).finally(()=>{
     if(key==='submissions') _pendingSubmissionsSync = Math.max(0, _pendingSubmissionsSync-1);
+    if(key==='programs') _pendingProgramsSync = Math.max(0, _pendingProgramsSync-1);
   }).catch(err=>{
     console.error('Sinkronisasi ke Google Sheets gagal', err);
     showSyncError('Gagal menyimpan ke database online. Periksa koneksi internet, perubahan tersimpan lokal untuk sementara.');
@@ -511,8 +517,9 @@ async function initDB(){
       if(serverVal === undefined){
         belumPernahDibuat.push(k);
       } else {
-        DB[k] = serverVal;
-        saveLocalCache(k, serverVal);
+        const finalVal = (k==='submissions') ? normalizeSubmissions(serverVal) : serverVal;
+        DB[k] = finalVal;
+        saveLocalCache(k, finalVal);
       }
     });
     if(belumPernahDibuat.length>0) seedServerConfirmedEmpty(belumPernahDibuat);
@@ -573,7 +580,8 @@ function defaultValueFor(key){
     case 'permissions': return {
       'admin':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:true, pengaturan:true, tambahProgram:true, hapusMassal:true, shareWA:true, selesaiSemua:true},
       'kepala sekolah':{dashboard:true, approve:true, waka:true, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false, hapusMassal:false, shareWA:true, selesaiSemua:true},
-      'waka':{dashboard:true, approve:false, waka:false, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false, hapusMassal:false, shareWA:true, selesaiSemua:true}
+      'waka':{dashboard:true, approve:false, waka:false, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:false, hapusMassal:false, shareWA:true, selesaiSemua:true},
+      'operator':{dashboard:true, approve:false, waka:true, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:true, hapusMassal:false, shareWA:true, selesaiSemua:true}
     };
     case 'settings': return {tahunAjaran:['2024/2025','2025/2026'], tahunAktif:'2025/2026', theme:'light'};
     default: return undefined;
@@ -595,10 +603,16 @@ function migratePermissionsIfNeeded(){
   const perms = load('permissions', null);
   if(!perms) return;
   let changed = false;
-  const defaults = {admin:true, 'kepala sekolah':true, waka:false};
-  const tambahProgramDefaults = {admin:true, 'kepala sekolah':false, waka:false};
-  const hapusMassalDefaults = {admin:true, 'kepala sekolah':false, waka:false};
-  const shareWADefaults = {admin:true, 'kepala sekolah':true, waka:true};
+  /* Role Operator: dibuat otomatis (sekali) jika belum ada di data permissions lama.
+     Setelah itu pengaturannya bisa diubah bebas lewat menu User > Kelola Akses. */
+  if(!perms.operator){
+    perms.operator = {dashboard:true, approve:false, waka:true, program:true, programHarian:true, rekap:true, user:false, pengaturan:false, tambahProgram:true, hapusMassal:false, shareWA:true, selesaiSemua:true};
+    changed = true;
+  }
+  const defaults = {admin:true, 'kepala sekolah':true, waka:false, operator:false};
+  const tambahProgramDefaults = {admin:true, 'kepala sekolah':false, waka:false, operator:true};
+  const hapusMassalDefaults = {admin:true, 'kepala sekolah':false, waka:false, operator:false};
+  const shareWADefaults = {admin:true, 'kepala sekolah':true, waka:true, operator:true};
   Object.keys(defaults).forEach(role=>{
     if(perms[role] && perms[role].approve===undefined){ perms[role].approve = defaults[role]; changed = true; }
     if(perms[role] && perms[role].programHarian===undefined){ perms[role].programHarian = true; changed = true; }
@@ -967,7 +981,34 @@ function toast(msg){
   t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'), 2200);
 }
-function todayStr(){ return new Date().toISOString().slice(0,10); }
+function localDateStr(d){
+  d = d || new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function todayStr(){ return localDateStr(); }
+/* Hari untuk PROGRAM HARIAN berganti pukul 18.01, bukan tengah malam:
+   tanggal 1 Okt dihitung dari 30 Sep pukul 18.01 sampai 1 Okt pukul 18.00.
+   Ubah HARIAN_BATAS_JAM jika batas pergantian harinya ingin diganti. */
+const HARIAN_BATAS_JAM = 18;
+function todayHarianStr(){
+  const geser = (24 - HARIAN_BATAS_JAM) * 60 - 1; // menit
+  return localDateStr(new Date(Date.now() + geser * 60000));
+}
+/* Perbaikan data lama: periode yang pernah tersimpan sebagai teks ISO
+   (mis. '2026-09-28T17:00:00.000Z') dikembalikan ke format aslinya. */
+function normalizeSubmissions(arr){
+  if(!Array.isArray(arr)) return arr;
+  return arr.map(s=>{
+    if(s && typeof s.periode==='string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?$/.test(s.periode)){
+      const d = new Date(s.periode);
+      if(!isNaN(d.getTime())){
+        const full = localDateStr(d);
+        return Object.assign({}, s, {periode: s.jenis==='bulanan' ? full.slice(0,7) : (s.jenis==='tahunan' ? full.slice(0,4) : full)});
+      }
+    }
+    return s;
+  });
+}
 function getISOWeek(d){
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   const dayNum = (date.getUTCDay()+6)%7;
@@ -977,18 +1018,18 @@ function getISOWeek(d){
   return date.getUTCFullYear()+'-W'+String(week).padStart(2,'0');
 }
 function currentWeekStr(){ return getISOWeek(new Date()); }
-function currentMonthStr(){ return new Date().toISOString().slice(0,7); }
+function currentMonthStr(){ return localDateStr().slice(0,7); }
 function currentYearStr(){ return String(new Date().getFullYear()); }
 function periodKeyFor(jenis, dateInput){
   const d = dateInput ? new Date(dateInput) : new Date();
-  if(jenis==='harian') return dateInput ? dateInput : todayStr();
+  if(jenis==='harian') return dateInput ? dateInput : todayHarianStr();
   if(jenis==='mingguan') return getISOWeek(d);
   if(jenis==='bulanan') return (dateInput||todayStr()).slice(0,7);
   if(jenis==='tahunan') return String(d.getFullYear());
   return '';
 }
 function currentPeriod(jenis){
-  if(jenis==='harian') return todayStr();
+  if(jenis==='harian') return todayHarianStr();
   if(jenis==='mingguan') return currentWeekStr();
   if(jenis==='bulanan') return currentMonthStr();
   if(jenis==='tahunan') return currentYearStr();
@@ -1265,7 +1306,7 @@ function renderProgramPage(){
 function renderProgramHarianPage(){
   const isWaka = session && session.role==='waka';
   const myWakaId = isWaka ? getMyWakaId() : null;
-  const selectedDate = window._harianFilterDate || todayStr();
+  const selectedDate = window._harianFilterDate || todayHarianStr();
   let programs = load('programs', []).filter(p=>p.jenis==='harian');
   const wakas = load('wakas', []);
   const submissions = load('submissions', []);
@@ -1320,7 +1361,7 @@ function renderProgramHarianPage(){
         <div class="toolbar">
           <label style="font-size:12.5px;color:var(--muted);margin-right:2px;">Tanggal:</label>
           <input type="date" value="${selectedDate}" onchange="onHarianDateChange(this.value)">
-          ${selectedDate!==todayStr() ? `<button class="btn btn-ghost btn-sm" onclick="onHarianDateChange('${todayStr()}')">Hari Ini</button>` : ''}
+          ${selectedDate!==todayHarianStr() ? `<button class="btn btn-ghost btn-sm" onclick="onHarianDateChange('${todayHarianStr()}')">Hari Ini</button>` : ''}
           ${canAccess('selesaiSemua') ? `<button class="btn btn-accent" onclick="checkAllHarianSelesai()">&#10003; Centang Selesai Semua</button>` : ''}
           ${canAccess('shareWA') ? `<button class="btn" style="background:#25D366;color:#fff;" onclick="shareHarianWA()">&#128172; Share WA</button>` : ''}
           ${bulkDeleteButton('programsHarian')}
@@ -1355,7 +1396,7 @@ function formatTanggalLengkap(dateStr){
 function shareHarianWA(){
   const isWaka = session && session.role==='waka';
   const myWakaId = isWaka ? getMyWakaId() : null;
-  const selectedDate = window._harianFilterDate || todayStr();
+  const selectedDate = window._harianFilterDate || todayHarianStr();
   let programs = load('programs', []).filter(p=>p.jenis==='harian');
   if(isWaka) programs = programs.filter(p=>p.wakaId===myWakaId);
   if(programs.length===0){ toast('Tidak ada program harian untuk dibagikan'); return; }
@@ -1410,7 +1451,7 @@ function toggleHarianSelesai(programId, checked){
   if(!p) return;
   const pelaksana = load('wakas', []).find(w=>w.id===p.wakaId);
   if(!pelaksana){ toast('Tentukan Waka Penanggung Jawab program ini terlebih dahulu lewat tombol Edit'); render(); return; }
-  const period = window._harianFilterDate || todayStr();
+  const period = window._harianFilterDate || todayHarianStr();
   const list = load('submissions', []);
   const idx = list.findIndex(s=>s.programId===programId && s.periode===period);
   if(checked){
@@ -1435,7 +1476,7 @@ function toggleHarianSelesaiSemua(checked){
   if(!canAccess('selesaiSemua')){ toast('Fitur ini dinonaktifkan oleh admin'); return; }
   const isWaka = session && session.role==='waka';
   const myWakaId = isWaka ? getMyWakaId() : null;
-  const period = window._harianFilterDate || todayStr();
+  const period = window._harianFilterDate || todayHarianStr();
   const wakaIds = new Set(load('wakas', []).map(w=>w.id));
   let programs = load('programs', []).filter(p=>p.jenis==='harian');
   if(isWaka) programs = programs.filter(p=>p.wakaId===myWakaId);
@@ -1871,7 +1912,7 @@ function renderRekapPage(sub){
   const totalProg = progOfJenis.length;
 
   const periodInputHtml = {
-    harian: `<input type="date" id="rekapPeriod" value="${window._rekapPeriod && window._rekapPeriod[jenis] || todayStr()}" onchange="onRekapPeriodChange('${jenis}', this.value)">`,
+    harian: `<input type="date" id="rekapPeriod" value="${window._rekapPeriod && window._rekapPeriod[jenis] || todayHarianStr()}" onchange="onRekapPeriodChange('${jenis}', this.value)">`,
     mingguan: `<input type="week" id="rekapPeriod" value="${window._rekapPeriod && window._rekapPeriod[jenis] || currentWeekStr()}" onchange="onRekapPeriodChange('${jenis}', this.value)">`,
     bulanan: `<input type="month" id="rekapPeriod" value="${window._rekapPeriod && window._rekapPeriod[jenis] || currentMonthStr()}" onchange="onRekapPeriodChange('${jenis}', this.value)">`,
     tahunan: `<input type="number" id="rekapPeriod" style="width:110px;" value="${window._rekapPeriod && window._rekapPeriod[jenis] || currentYearStr()}" onchange="onRekapPeriodChange('${jenis}', this.value)">`,
@@ -1963,7 +2004,7 @@ function renderUserPage(sub){
       </td>
       <td>${escapeHtml(u.jabatan||'-')}</td>
       <td>${escapeHtml(u.email||'-')}</td>
-      <td><span class="tag tag-role-${u.role==='admin'?'admin':(u.role==='kepala sekolah'?'kepsek':'waka')}">${capitalize(u.role)}</span></td>
+      <td><span class="tag tag-role-${u.role==='admin'?'admin':(u.role==='kepala sekolah'?'kepsek':(u.role==='operator'?'operator':'waka'))}">${capitalize(u.role)}</span></td>
       <td><div class="row-actions center">
         <button class="btn btn-ghost btn-sm" onclick="openUserModal('${u.id}')">Edit</button>
         <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}')">Hapus</button>
@@ -1972,7 +2013,7 @@ function renderUserPage(sub){
   return tabs + `
     <div class="card">
       <div class="card-head">
-        <div><h3>Akun Pengguna</h3><div class="hint">Kelola akun login untuk admin, kepala sekolah, dan waka.</div></div>
+        <div><h3>Akun Pengguna</h3><div class="hint">Kelola akun login untuk admin, kepala sekolah, waka, dan operator.</div></div>
         <div class="toolbar">
           ${bulkDeleteButton('users')}
           <button class="btn btn-primary" onclick="openUserModal()">+ Tambah Akun</button>
@@ -2025,6 +2066,7 @@ function openUserModal(id){
         <option value="admin" ${u&&u.role==='admin'?'selected':''}>Admin</option>
         <option value="kepala sekolah" ${u&&u.role==='kepala sekolah'?'selected':''}>Kepala Sekolah</option>
         <option value="waka" ${u&&u.role==='waka'?'selected':''}>Waka</option>
+        <option value="operator" ${u&&u.role==='operator'?'selected':''}>Operator</option>
       </select>
     </div>
     <div class="field"><label>Email <span style="font-weight:400;color:var(--muted);">(opsional, dipakai untuk notifikasi)</span></label><input type="email" id="fUserEmail" value="${u?escapeHtml(u.email||''):''}" placeholder="nama@email.com"></div>
@@ -2063,7 +2105,7 @@ function deleteUser(id){
 }
 function renderAksesPage(){
   const perms = load('permissions', {});
-  const roles = ['admin','kepala sekolah','waka'];
+  const roles = ['admin','kepala sekolah','waka','operator'];
   const menus = [{key:'dashboard',label:'Dashboard'},{key:'approve',label:'Approve Program'},{key:'waka',label:'Data Waka'},{key:'program',label:'Data Program'},{key:'programHarian',label:'Program Harian'},{key:'rekap',label:'Rekap Program'},{key:'user',label:'User'},{key:'pengaturan',label:'Pengaturan'}];
   const fitur = [
     {key:'tambahProgram',label:'Tombol Tambah Program (menu Data Program &amp; Program Harian)'},
@@ -2088,7 +2130,7 @@ function renderAksesPage(){
       </div>
       <div class="tbl-wrap">
       <table class="access-table">
-        <thead><tr><th>Menu</th><th>Admin</th><th>Kepala Sekolah</th><th>Waka</th></tr></thead>
+        <thead><tr><th>Menu</th><th>Admin</th><th>Kepala Sekolah</th><th>Waka</th><th>Operator</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
@@ -2099,7 +2141,7 @@ function renderAksesPage(){
       </div>
       <div class="tbl-wrap">
       <table class="access-table">
-        <thead><tr><th>Fitur</th><th>Admin</th><th>Kepala Sekolah</th><th>Waka</th></tr></thead>
+        <thead><tr><th>Fitur</th><th>Admin</th><th>Kepala Sekolah</th><th>Waka</th><th>Operator</th></tr></thead>
         <tbody>${fiturRows}</tbody>
       </table>
       </div>
@@ -2373,13 +2415,29 @@ async function pollSubmissionsUpdate(){
        polling ini karena sudah usang - jangan pernah menimpa perubahan
        yang baru saja dibuat / sedang dikirim. */
     if(_pendingSubmissionsSync>0 || _submissionsLocalVersion!==versionAtStart) return;
-    const serverVal = Array.isArray(res.data) ? res.data : [];
+    const serverVal = Array.isArray(res.data) ? normalizeSubmissions(res.data) : [];
     if(JSON.stringify(serverVal) !== JSON.stringify(DB['submissions']||[])){
       DB['submissions'] = serverVal;
       saveLocalCache('submissions', serverVal);
       render();
     }
   }catch(e){ /* diam-diam abaikan kegagalan polling, tidak mengganggu pemakaian */ }
+}
+/* Polling daftar program (termasuk program harian) supaya penambahan/perubahan
+   program dari role lain ikut muncul tanpa harus login ulang atau refresh. */
+async function pollProgramsUpdate(){
+  if(!isApiConfigured() || !session || _pendingProgramsSync>0) return;
+  const versionAtStart = _programsLocalVersion;
+  try{
+    const res = await apiGet2({action:'load', key:'programs'});
+    if(!res || !res.ok || !Array.isArray(res.data)) return;
+    if(_pendingProgramsSync>0 || _programsLocalVersion!==versionAtStart) return;
+    if(JSON.stringify(res.data) !== JSON.stringify(DB['programs']||[])){
+      DB['programs'] = res.data;
+      saveLocalCache('programs', res.data);
+      render();
+    }
+  }catch(e){ /* abaikan */ }
 }
 function apiGet2(paramsObj){
   const qs = Object.keys(paramsObj).map(k=>encodeURIComponent(k)+'='+encodeURIComponent(paramsObj[k])).join('&');
@@ -2389,7 +2447,7 @@ function apiGet2(paramsObj){
 }
 function startSubmissionsPolling(){
   stopSubmissionsPolling();
-  _pollTimer = setInterval(pollSubmissionsUpdate, 15000);
+  _pollTimer = setInterval(()=>{ pollSubmissionsUpdate(); pollProgramsUpdate(); }, 15000);
 }
 function stopSubmissionsPolling(){
   if(_pollTimer){ clearInterval(_pollTimer); _pollTimer = null; }
