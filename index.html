@@ -457,7 +457,7 @@ function apiPost(body){
   }).then(r=>r.json());
 }
 function apiGet(action){
-  return fetch(API_URL + '?action=' + encodeURIComponent(action) + '&apiKey=' + encodeURIComponent(API_KEY))
+  return fetch(API_URL + '?action=' + encodeURIComponent(action) + '&apiKey=' + encodeURIComponent(API_KEY) + '&_t=' + Date.now(), {cache:'no-store'})
     .then(r=>r.json());
 }
 async function syncToServer(key, val){
@@ -2383,7 +2383,9 @@ async function pollSubmissionsUpdate(){
 }
 function apiGet2(paramsObj){
   const qs = Object.keys(paramsObj).map(k=>encodeURIComponent(k)+'='+encodeURIComponent(paramsObj[k])).join('&');
-  return fetch(API_URL + '?' + qs + '&apiKey=' + encodeURIComponent(API_KEY)).then(r=>r.json());
+  /* cache:'no-store' + parameter _t unik supaya browser/proxy TIDAK PERNAH
+     menyajikan jawaban lama yang ter-cache untuk polling berkala ini. */
+  return fetch(API_URL + '?' + qs + '&apiKey=' + encodeURIComponent(API_KEY) + '&_t=' + Date.now(), {cache:'no-store'}).then(r=>r.json());
 }
 function startSubmissionsPolling(){
   stopSubmissionsPolling();
