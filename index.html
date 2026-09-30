@@ -418,6 +418,7 @@ function load(key, fallback){
 }
 function save(key, val){
   if(key==='session'){ saveSession(val); return; }
+  if(key==='submissions') _submissionsLocalVersion++;
   DB[key] = val;
   saveLocalCache(key, val);
   queueSync(key, val);
@@ -427,6 +428,7 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 /* ---------- Sinkronisasi ke Google Sheets ---------- */
 let _syncQueue = Promise.resolve();
 let _pendingSubmissionsSync = 0;
+let _submissionsLocalVersion = 0;
 function showSyncError(msg, withRetry){
   const box = document.getElementById('loginSyncStatus');
   if(box){
@@ -2359,9 +2361,18 @@ function closeModal(){ document.getElementById('modalRoot').innerHTML = ''; }
 let _pollTimer = null;
 async function pollSubmissionsUpdate(){
   if(!isApiConfigured() || !session || _pendingSubmissionsSync>0) return;
+  const versionAtStart = _submissionsLocalVersion;
   try{
     const res = await apiGet2({action:'load', key:'submissions'});
-    if(!res || !res.ok) return;
+    if(!res || !res.ok){
+      if(res && res.error) console.warn('Polling submissions gagal:', res.error);
+      return;
+    }
+    /* Kunci perbaikan: kalau SELAMA proses pengambilan data ini ada
+       perubahan lokal baru (pengguna mencentang sesuatu), buang hasil
+       polling ini karena sudah usang - jangan pernah menimpa perubahan
+       yang baru saja dibuat / sedang dikirim. */
+    if(_pendingSubmissionsSync>0 || _submissionsLocalVersion!==versionAtStart) return;
     const serverVal = Array.isArray(res.data) ? res.data : [];
     if(JSON.stringify(serverVal) !== JSON.stringify(DB['submissions']||[])){
       DB['submissions'] = serverVal;
