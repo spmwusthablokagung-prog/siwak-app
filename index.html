@@ -371,7 +371,7 @@ input[type="month"]::-webkit-calendar-picker-indicator{
    lokal (localStorage) seperti semula, jadi tetap aman dicoba
    dulu sebelum database online disiapkan.
 ========================================================= */
-const API_URL = 'https://script.google.com/macros/s/AKfycbyaxX7AW074u961u23tnih900ZusYiMrKg2UrNAIuU2vCzecy4CmK3-u-C1H8qNdsKRmQ/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbwJgH4ISnQpCBKYJudQp4KrAGD5WlZq9DECurPPiRaWktR-JjpxSXhYAzeIxdwsDJdVDQ/exec';
 const API_KEY = 'siwak-muadalah-2026';
 const SYNCED_KEYS = ['jabatanList','permissions','programs','settings','submissions','users','wakas'];
 function isApiConfigured(){ return !!API_URL && API_URL.indexOf('PASTE_URL')!==0; }
@@ -426,6 +426,7 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 
 /* ---------- Sinkronisasi ke Google Sheets ---------- */
 let _syncQueue = Promise.resolve();
+let _pendingSubmissionsSync = 0;
 function showSyncError(msg, withRetry){
   const box = document.getElementById('loginSyncStatus');
   if(box){
@@ -438,7 +439,10 @@ function showSyncError(msg, withRetry){
 }
 function queueSync(key, val){
   if(!isApiConfigured() || !SYNCED_KEYS.includes(key)) return;
-  _syncQueue = _syncQueue.then(()=>syncToServer(key, val)).catch(err=>{
+  if(key==='submissions') _pendingSubmissionsSync++;
+  _syncQueue = _syncQueue.then(()=>syncToServer(key, val)).finally(()=>{
+    if(key==='submissions') _pendingSubmissionsSync = Math.max(0, _pendingSubmissionsSync-1);
+  }).catch(err=>{
     console.error('Sinkronisasi ke Google Sheets gagal', err);
     showSyncError('Gagal menyimpan ke database online. Periksa koneksi internet, perubahan tersimpan lokal untuk sementara.');
   });
@@ -514,7 +518,7 @@ async function initDB(){
   }catch(e){
     console.error('Gagal memuat data dari Google Sheets', e);
     /* Data login (users) tersimpan di server, jadi kalau tidak berhasil
-       terhubung,  TIDAK diizinkan - supaya tidak login memakai data
+       terhubung, login TIDAK diizinkan - supaya tidak login memakai data
        user yang mungkin sudah usang/salah dari cache lokal. Sengaja juga
        TIDAK melakukan seeding atau sinkronisasi apa pun di sini, supaya
        data asli di server tidak berisiko tertimpa. */
@@ -694,6 +698,7 @@ function showLoginScreen(){
   if(eye){ eye.classList.remove('on'); eye.title='Lihat password'; }
 }
 function doLogout(){
+  stopSubmissionsPolling();
   showLoginScreen();
   /* Beritahu tab lain di browser ini: logout berlaku untuk seluruh browser */
   saveLocalCache('logoutSignal', Date.now());
@@ -2351,8 +2356,34 @@ function closeModal(){ document.getElementById('modalRoot').innerHTML = ''; }
 /* =========================================================
    BOOTSTRAP
 ========================================================= */
+let _pollTimer = null;
+async function pollSubmissionsUpdate(){
+  if(!isApiConfigured() || !session || _pendingSubmissionsSync>0) return;
+  try{
+    const res = await apiGet2({action:'load', key:'submissions'});
+    if(!res || !res.ok) return;
+    const serverVal = Array.isArray(res.data) ? res.data : [];
+    if(JSON.stringify(serverVal) !== JSON.stringify(DB['submissions']||[])){
+      DB['submissions'] = serverVal;
+      saveLocalCache('submissions', serverVal);
+      render();
+    }
+  }catch(e){ /* diam-diam abaikan kegagalan polling, tidak mengganggu pemakaian */ }
+}
+function apiGet2(paramsObj){
+  const qs = Object.keys(paramsObj).map(k=>encodeURIComponent(k)+'='+encodeURIComponent(paramsObj[k])).join('&');
+  return fetch(API_URL + '?' + qs + '&apiKey=' + encodeURIComponent(API_KEY)).then(r=>r.json());
+}
+function startSubmissionsPolling(){
+  stopSubmissionsPolling();
+  _pollTimer = setInterval(pollSubmissionsUpdate, 15000);
+}
+function stopSubmissionsPolling(){
+  if(_pollTimer){ clearInterval(_pollTimer); _pollTimer = null; }
+}
 function enterApp(){
   if(session) holdLoginLock(session.userId);
+  startSubmissionsPolling();
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('app').classList.add('active');
   applyTheme();
