@@ -1410,9 +1410,9 @@ function shareHarianWA(){
     let ket = '';
     if(isChecked && current.diajukanPada){
       const status = getKetepatanWaktu(current.periode, current.diajukanPada);
-      ket = status==='tepat' ? '✅' : '🚫';
+      ket = status==='tepat' ? '\u2705' : '\u274C';
     }
-    text += '🗒️: *' + p.nama + '*\n';
+    text += '\uD83D\uDCDD *' + p.nama + '*\n';
     text += '*PJ* : *' + (wakaMap[p.wakaId] || 'Belum ada waka') + '*\n';
     text += '*KET* : ' + ket + '\n\n';
   });
