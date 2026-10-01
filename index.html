@@ -949,7 +949,7 @@ function render(){
   else if(route.menu==='programHarian') c.innerHTML = renderProgramHarianPage();
   else if(route.menu==='rekap') c.innerHTML = renderRekapPage(route.sub||'harian');
   else if(route.menu==='user') c.innerHTML = renderUserPage(route.sub||'akun');
-  else if(route.menu==='pengaturan') c.innerHTML = renderSettingsPage();
+  else if(route.menu==='pengaturan'){ c.innerHTML = renderSettingsPage(); updateWaIconPreview(); }
 
   const who = document.getElementById('whoBox');
   if(session) who.innerHTML = `<b>${escapeHtml(session.username)}</b>${capitalize(session.role)}`;
@@ -1403,6 +1403,7 @@ function shareHarianWA(){
   const wakaMap = {};
   load('wakas', []).forEach(w=>{ wakaMap[w.id] = w.nama; });
   const submissions = load('submissions', []);
+  const WI = getWaIcons();
   let text = '*TUGAS HARIAN*\n_' + formatTanggalLengkap(selectedDate) + '_\n\n';
   programs.forEach(p=>{
     const current = submissions.find(s=>s.programId===p.id && s.periode===selectedDate);
@@ -1410,9 +1411,9 @@ function shareHarianWA(){
     let ket = '';
     if(isChecked && current.diajukanPada){
       const status = getKetepatanWaktu(current.periode, current.diajukanPada);
-      ket = status==='tepat' ? '\u2705' : '\u274C';
+      ket = status==='tepat' ? WI.tepat : WI.telat;
     }
-    text += '\uD83D\uDCDD *' + p.nama + '*\n';
+    text += WI.program + ' *' + p.nama + '*\n';
     text += '*PJ* : *' + (wakaMap[p.wakaId] || 'Belum ada waka') + '*\n';
     text += '*KET* : ' + ket + '\n\n';
   });
@@ -2162,6 +2163,96 @@ function onAksesChange(el){
 /* =========================================================
    PENGATURAN
 ========================================================= */
+/* =========================================================
+   IKON SHARE WA (bisa diganti dari menu Pengaturan)
+========================================================= */
+const WA_ICON_DEFAULTS = {
+  program: String.fromCodePoint(0x1F4DD),
+  tepat: String.fromCodePoint(0x2705),
+  telat: String.fromCodePoint(0x274C)
+};
+const WA_ICON_PRESETS = {
+  program: [0x1F4DD,0x1F4CC,0x1F4CB,0x1F4CD,0x1F539].map(c=>String.fromCodePoint(c)),
+  tepat:   [0x2705,0x1F44D,0x1F49A,0x2B50,0x1F60A].map(c=>String.fromCodePoint(c)),
+  telat:   [0x274C,0x1F6AB,0x1F534,0x23F0,0x1F622].map(c=>String.fromCodePoint(c))
+};
+const WA_ICON_LABELS = {
+  program: 'Penanda nama program',
+  tepat: 'Tepat waktu',
+  telat: 'Telat'
+};
+function getWaIcons(){
+  const s = load('settings', {});
+  const w = (s && s.waIcons) || {};
+  return {
+    program: w.program || WA_ICON_DEFAULTS.program,
+    tepat: w.tepat || WA_ICON_DEFAULTS.tepat,
+    telat: w.telat || WA_ICON_DEFAULTS.telat
+  };
+}
+function renderWaIconSettings(){
+  const cur = getWaIcons();
+  const rows = Object.keys(WA_ICON_LABELS).map(k=>`
+    <div class="field" style="margin-bottom:14px;">
+      <label>${WA_ICON_LABELS[k]}</label>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <input type="text" id="waIcon_${k}" value="${escapeHtml(cur[k])}" maxlength="12" oninput="updateWaIconPreview()" style="width:80px;text-align:center;font-size:20px;">
+        ${WA_ICON_PRESETS[k].map(ic=>`<button type="button" class="btn btn-ghost btn-sm" style="font-size:18px;padding:4px 10px;" data-key="${k}" data-ic="${escapeHtml(ic)}" onclick="pickWaIcon(this)">${ic}</button>`).join('')}
+      </div>
+    </div>`).join('');
+  return `
+    <div class="card">
+      <div class="card-head"><div><h3>Ikon Share WA</h3><div class="hint">Ikon pada pesan Share WA di menu Program Harian. Klik pilihan di samping kotak, atau ketik/tempel emoji sendiri. Pengaturan ini berlaku untuk semua role.</div></div></div>
+      <div style="padding:20px;">
+        ${rows}
+        <div class="field" style="margin-bottom:14px;">
+          <label>Pratinjau pesan</label>
+          <div id="waIconPreview" style="white-space:pre-line;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;line-height:1.7;"></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="saveWaIcons()">Simpan Ikon</button>
+          <button class="btn btn-ghost" onclick="resetWaIcons()">Kembalikan ke Bawaan</button>
+        </div>
+      </div>
+    </div>`;
+}
+function readWaIconInputs(){
+  const out = {};
+  Object.keys(WA_ICON_LABELS).forEach(k=>{
+    const el = document.getElementById('waIcon_'+k);
+    const v = el ? el.value.trim() : '';
+    out[k] = v || WA_ICON_DEFAULTS[k];
+  });
+  return out;
+}
+function updateWaIconPreview(){
+  const box = document.getElementById('waIconPreview');
+  if(!box) return;
+  const v = readWaIconInputs();
+  box.textContent = v.program + ' Contoh Program A\nPJ : Nama Waka\nKET : ' + v.tepat + '  (tepat waktu)\n\n' +
+                    v.program + ' Contoh Program B\nPJ : Nama Waka\nKET : ' + v.telat + '  (telat)';
+}
+function pickWaIcon(btn){
+  const el = document.getElementById('waIcon_'+btn.dataset.key);
+  if(el) el.value = btn.dataset.ic;
+  updateWaIconPreview();
+}
+function saveWaIcons(){
+  const v = readWaIconInputs();
+  Object.keys(v).forEach(k=>{ v[k] = Array.from(v[k]).slice(0,6).join(''); });
+  const settings = load('settings', {});
+  settings.waIcons = v;
+  save('settings', settings);
+  render();
+  toast('Ikon Share WA disimpan');
+}
+function resetWaIcons(){
+  const settings = load('settings', {});
+  delete settings.waIcons;
+  save('settings', settings);
+  render();
+  toast('Ikon Share WA dikembalikan ke bawaan');
+}
 function renderSettingsPage(){
   const settings = load('settings', {tahunAjaran:[], tahunAktif:'', theme:'light'});
   const jabatanList = load('jabatanList', []);
@@ -2212,6 +2303,8 @@ function renderSettingsPage(){
       </div>
     </div>
     </div>
+
+    ${renderWaIconSettings()}
 
     <div class="card">
       <div class="card-head"><div><h3>Tampilan</h3><div class="hint">Pilih mode tampilan aplikasi.</div></div></div>
