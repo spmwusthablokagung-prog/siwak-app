@@ -1291,9 +1291,9 @@ function importWakaXLSX(input){
 /* =========================================================
    DATA PROGRAM
 ========================================================= */
-function getCurrentSubmissionForProgram(programId, jenis){
+function getCurrentSubmissionForProgram(programId, jenis, periodOverride){
   const submissions = load('submissions', []);
-  const period = currentPeriod(jenis);
+  const period = periodOverride || currentPeriod(jenis);
   const matches = submissions.filter(s=>s.programId===programId && s.periode===period);
   if(matches.length===0) return null;
   matches.sort((a,b)=> new Date(b.diajukanPada) - new Date(a.diajukanPada));
@@ -1321,18 +1321,142 @@ function normalTahun(v){
 function toggleProgExtra(jenis){
   const show = {
     fProgHariWrap: jenis==='mingguan',
-    fProgBulanWrap: jenis==='bulanan' || jenis==='tahunan',
-    fProgTahunWrap: jenis==='bulanan' || jenis==='tahunan'
+    fProgBulanWrap: jenis==='tahunan',
+    fProgTahunWrap: jenis==='tahunan'
   };
   Object.keys(show).forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.style.display = show[id] ? '' : 'none';
   });
 }
+/* ---------- FILTER tabel program mingguan / bulanan / tahunan ---------- */
+function getProgramFilter(jenis){
+  window._progFilter = window._progFilter || {};
+  if(!window._progFilter[jenis]) window._progFilter[jenis] = {};
+  return window._progFilter[jenis];
+}
+function isProgramFilterActive(jenis){
+  return Object.values(getProgramFilter(jenis)).some(v=>!!v);
+}
+function applyProgramFilter(list, jenis){
+  const f = getProgramFilter(jenis);
+  const cocok = (fv, pv)=>{
+    if(!fv) return true;
+    if(fv==='__none') return !pv;
+    return String(pv==null?'':pv)===String(fv);
+  };
+  return list.filter(p=> cocok(f.hari,p.hari) && cocok(f.bulan,p.bulan) && cocok(f.tahun,p.tahun) && cocok(f.waka,p.wakaId));
+}
+function setProgramFilter(jenis, key, val){
+  getProgramFilter(jenis)[key] = val;
+  render();
+}
+function resetProgramFilter(jenis){
+  window._progFilter = window._progFilter || {};
+  window._progFilter[jenis] = {};
+  render();
+}
+/* ---------- FILTER PERIODE (minggu / bulan / tahun) pada tabel program ----------
+   Status "Ajukan Program" dihitung per periode, sehingga di minggu / bulan / tahun
+   berikutnya program otomatis kembali bisa diajukan lagi. Filter ini dipakai untuk
+   melihat (atau mengajukan) periode lain. */
+function selectedProgPeriod(jenis){
+  return (window._progPeriod && window._progPeriod[jenis]) || currentPeriod(jenis);
+}
+function setProgPeriod(jenis, val){
+  window._progPeriod = window._progPeriod || {};
+  window._progPeriod[jenis] = val || '';
+  render();
+}
+function resetProgPeriod(jenis){ setProgPeriod(jenis, ''); }
+function pickProgWeek(v){
+  if(!v) return;
+  setProgPeriod('mingguan', getWeekKey(parseLocalDate(v)));
+}
+function shiftProgPeriod(jenis, n){
+  const key = selectedProgPeriod(jenis);
+  if(jenis==='mingguan'){
+    const r = weekRange(key);
+    if(!r) return;
+    setProgPeriod(jenis, getWeekKey(new Date(r.start.getFullYear(), r.start.getMonth(), r.start.getDate() + 7*n)));
+  } else if(jenis==='bulanan'){
+    const p = key.split('-').map(Number);
+    const d = new Date(p[0], (p[1]||1)-1+n, 1);
+    setProgPeriod(jenis, d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'));
+  } else {
+    setProgPeriod(jenis, String((Number(key)||new Date().getFullYear()) + n));
+  }
+}
+function periodDefaultDate(jenis, period){
+  if(period===currentPeriod(jenis)) return todayStr();
+  if(jenis==='mingguan'){ const r = weekRange(period); return r ? localDateStr(r.start) : todayStr(); }
+  if(jenis==='bulanan') return period + '-01';
+  return period + '-01-01';
+}
+function labelForPeriod(jenis, period){
+  const bulanList = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+  if(jenis==='mingguan') return weekLabel(period);
+  if(jenis==='bulanan'){ const p = String(period).split('-'); return (bulanList[Number(p[1])-1]||period) + ' ' + p[0]; }
+  return 'Tahun ' + period;
+}
+function renderProgPeriodControl(jenis){
+  const key = selectedProgPeriod(jenis);
+  const isNow = key===currentPeriod(jenis);
+  let input;
+  if(jenis==='mingguan'){
+    const r = weekRange(key);
+    input = `<input type="date" value="${r ? localDateStr(r.start) : ''}" onchange="pickProgWeek(this.value)" title="Pilih tanggal mana saja dalam minggu yang dimaksud">`;
+  } else if(jenis==='bulanan'){
+    input = `<input type="month" value="${escapeHtml(key)}" onchange="if(this.value) setProgPeriod('bulanan', this.value)">`;
+  } else {
+    input = `<input type="number" min="2000" max="2100" style="width:100px;" value="${escapeHtml(key)}" onchange="if(/^\\d{4}$/.test(this.value)) setProgPeriod('tahunan', this.value)">`;
+  }
+  const lbl = {mingguan:'Tanggal', bulanan:'Bulan', tahunan:'Tahun'}[jenis];
+  const nowLbl = {mingguan:'Minggu Ini', bulanan:'Bulan Ini', tahunan:'Tahun Ini'}[jenis];
+  return `
+          <label style="font-size:12.5px;color:var(--muted);margin-right:2px;">${lbl}:</label>
+          ${input}
+          ${isNow ? '' : `<button class="btn btn-ghost btn-sm" onclick="resetProgPeriod('${jenis}')">${nowLbl}</button>`}`;
+}
+function renderProgramFilterBar(jenis, programsAll, shownCount, wakas, isWaka){
+  const f = getProgramFilter(jenis);
+  const sel = (key, label, options)=>`
+    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);">${label}
+      <select style="width:auto;min-width:120px;" onchange="setProgramFilter('${jenis}','${key}',this.value)">
+        <option value="">Semua</option>
+        <option value="__none" ${f[key]==='__none'?'selected':''}>Belum ditentukan</option>
+        ${options.map(o=>`<option value="${escapeHtml(String(o.v))}" ${String(f[key]||'')===String(o.v)?'selected':''}>${escapeHtml(String(o.t))}</option>`).join('')}
+      </select>
+    </label>`;
+  const parts = [];
+  if(jenis==='mingguan'){
+    parts.push(sel('hari','Hari', HARI_PROGRAM.map(x=>({v:x,t:x}))));
+  } else if(jenis==='tahunan'){
+    parts.push(sel('bulan','Bulan', BULAN_PROGRAM.map(x=>({v:x,t:x}))));
+    const tahunSet = Array.from(new Set(programsAll.map(p=>p.tahun).filter(v=>v!==undefined && v!==null && v!=='').map(String))).sort();
+    parts.push(sel('tahun','Tahun', tahunSet.map(x=>({v:x,t:x}))));
+  }
+  if(!isWaka) parts.push(sel('waka','Waka', wakas.map(w=>({v:w.id,t:w.nama}))));
+  const aktif = isProgramFilterActive(jenis);
+  return `
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--line);">
+      <span style="display:flex;align-items:center;gap:8px;">${renderProgPeriodControl(jenis)}</span>
+      ${parts.length ? `<span style="width:1px;height:20px;background:var(--line);"></span>
+      <span style="font-size:12.5px;font-weight:600;">Filter</span>
+      ${parts.join('')}` : ''}
+      ${aktif ? `<button class="btn btn-ghost btn-sm" onclick="resetProgramFilter('${jenis}')">Reset Filter</button>` : ''}
+      <span style="font-size:12.5px;color:var(--muted);margin-left:auto;">${shownCount} dari ${programsAll.length} program</span>
+    </div>`;
+}
 function renderProgramPage(jenisSub){
   const jenisSel = ['mingguan','bulanan','tahunan'].includes(jenisSub) ? jenisSub : 'mingguan';
   const _bt = [{label:'Bulan', key:'bulan'}, {label:'Tahun', key:'tahun'}];
-  const extraCols = {mingguan:[{label:'Hari', key:'hari'}], bulanan:_bt, tahunan:_bt}[jenisSel];
+  /* Program BULANAN: kolom Bulan & Tahun terisi otomatis mengikuti filter periode */
+  const _autoBT = [
+    {label:'Bulan', auto:()=>{ const pr = String(selectedProgPeriod('bulanan')).split('-'); return BULAN_PROGRAM[Number(pr[1])-1] || ''; }},
+    {label:'Tahun', auto:()=>String(selectedProgPeriod('bulanan')).split('-')[0]}
+  ];
+  const extraCols = {mingguan:[{label:'Hari', key:'hari'}], bulanan:_autoBT, tahunan:_bt}[jenisSel];
   const isWaka = session && session.role==='waka';
   const isKepsek = session && session.role==='kepala sekolah';
   const myWakaId = isWaka ? getMyWakaId() : null;
@@ -1341,20 +1465,27 @@ function renderProgramPage(jenisSub){
   const wakaMap = {};
   wakas.forEach(w=>wakaMap[w.id]=w.nama);
   if(isWaka) programs = programs.filter(p=>p.wakaId===myWakaId);
+  const programsAll = programs.slice();
+  programs = applyProgramFilter(programs, jenisSel);
+  const selPeriod = selectedProgPeriod(jenisSel);
+  const isFuturePeriod = selPeriod > currentPeriod(jenisSel);
+  const ajukanDate = periodDefaultDate(jenisSel, selPeriod);
   const rows = programs.map((p,i)=>{
-    const current = getCurrentSubmissionForProgram(p.id, p.jenis);
+    const current = getCurrentSubmissionForProgram(p.id, p.jenis, selPeriod);
     let ajukanBtn;
     if(isKepsek){
       if(!current) ajukanBtn = `<span class="tag" style="background:var(--surface-2);color:var(--muted);">Belum diajukan</span>`;
       else if(current.status==='disetujui') ajukanBtn = `<span class="tag tag-bulanan">&#10003; Selesai</span>`;
       else if(current.status==='ditolak') ajukanBtn = `<span class="tag tag-tahunan">Ditolak</span>`;
       else ajukanBtn = `<span class="tag" style="background:var(--surface-2);color:var(--muted);">Menunggu</span>`;
+    } else if(!current && isFuturePeriod){
+      ajukanBtn = `<button class="btn btn-sm" style="background:var(--surface-2);color:var(--muted);cursor:default;" disabled title="Periode ini belum dimulai">Belum periodenya</button>`;
     } else if(!current){
-      ajukanBtn = `<button class="btn btn-accent btn-sm" onclick="openAjukanModal('${p.id}')">Ajukan Program</button>`;
+      ajukanBtn = `<button class="btn btn-accent btn-sm" onclick="openAjukanModal('${p.id}','${ajukanDate}')">Ajukan Program</button>`;
     } else if(current.status==='disetujui'){
       ajukanBtn = `<button class="btn btn-sm" style="background:var(--success-soft);color:var(--success);cursor:default;" disabled>&#10003; Selesai</button>`;
     } else if(current.status==='ditolak'){
-      ajukanBtn = `<button class="btn btn-sm" style="background:var(--danger-soft);color:var(--danger);" onclick="openAjukanModal('${p.id}')" title="Ditolak, klik untuk ajukan ulang">Ditolak &mdash; Ajukan Ulang</button>`;
+      ajukanBtn = `<button class="btn btn-sm" style="background:var(--danger-soft);color:var(--danger);" onclick="openAjukanModal('${p.id}','${ajukanDate}')" title="Ditolak, klik untuk ajukan ulang">Ditolak &mdash; Ajukan Ulang</button>`;
     } else {
       ajukanBtn = `<button class="btn btn-sm" style="background:var(--surface-2);color:var(--muted);cursor:default;" disabled>Menunggu</button>`;
     }
@@ -1364,7 +1495,7 @@ function renderProgramPage(jenisSub){
       ${bulkCheckboxRowCell('programs', p.id)}
       <td>${i+1}</td>
       <td>${escapeHtml(p.nama)}</td>
-      ${extraCols.map(c=>`<td>${p[c.key] ? escapeHtml(String(p[c.key])) : '<span style="color:var(--muted);">-</span>'}</td>`).join('')}
+      ${extraCols.map(c=>{ const v = c.auto ? c.auto() : p[c.key]; return `<td>${v ? escapeHtml(String(v)) : '<span style="color:var(--muted);">-</span>'}</td>`; }).join('')}
       <td>${escapeHtml(wakaMap[p.wakaId] || '-')}</td>
       <td><div class="row-actions center">
         ${ajukanBtn}
@@ -1377,7 +1508,7 @@ function renderProgramPage(jenisSub){
     ${isWaka && !myWakaId ? `<div class="card" style="padding:16px 20px;margin-bottom:18px;border-color:var(--accent);"><span style="font-size:13.5px;color:var(--muted);">Akun Anda belum terhubung ke data waka manapun, sehingga belum ada program yang bisa ditampilkan. Hubungi admin.</span></div>` : ''}
     <div class="card">
       <div class="card-head">
-        <div><h3>Data Program ${jenisLabel(jenisSel)}</h3><div class="hint">${isWaka? 'Program kerja yang menjadi tanggung jawab Anda.' : (isKepsek ? 'Pantau daftar program dan status pelaksanaannya.' : 'Kelola daftar program dan ajukan pelaksanaan program oleh waka.')}</div></div>
+        <div><h3>Data Program ${jenisLabel(jenisSel)}</h3><div class="hint">${isWaka? 'Program kerja yang menjadi tanggung jawab Anda.' : (isKepsek ? 'Pantau daftar program dan status pelaksanaannya.' : 'Kelola daftar program dan ajukan pelaksanaan program oleh waka.')} Periode: ${escapeHtml(labelForPeriod(jenisSel, selPeriod))}.</div></div>
         <div class="toolbar">
           ${canAccess('shareWA') ? `<button class="btn" style="background:#25D366;color:#fff;" onclick="shareProgramWA('${jenisSel}')">&#128172; Share WA</button>` : ''}
           ${bulkDeleteButton('programs')}
@@ -1388,15 +1519,25 @@ function renderProgramPage(jenisSub){
           ${canAccess('tambahProgram') ? `<button class="btn btn-primary" onclick="openProgramModal(null,'${jenisSel}')">+ Tambah Program ${jenisLabel(jenisSel)}</button>` : ''}
         </div>
       </div>
+      ${renderProgramFilterBar(jenisSel, programsAll, programs.length, wakas, isWaka)}
       <div class="tbl-wrap">
       <table>
         <thead><tr>${bulkCheckboxHeaderCell('programs', programs.map(p=>p.id))}<th style="width:50px;">No</th><th style="width:230px;">Nama Program</th>${extraCols.map(c=>`<th style="width:110px;">${c.label}</th>`).join('')}<th style="width:170px;">Waka</th><th style="width:290px;text-align:center;">Aksi</th></tr></thead>
-        <tbody>${rows || `<tr class="empty-row"><td colspan="${(bulkEnabled()?5:4) + extraCols.length}">Belum ada program ${jenisLabel(jenisSel).toLowerCase()}.</td></tr>`}</tbody>
+        <tbody>${rows || `<tr class="empty-row"><td colspan="${(bulkEnabled()?5:4) + extraCols.length}">${isProgramFilterActive(jenisSel) ? 'Tidak ada program yang cocok dengan filter.' : 'Belum ada program ' + jenisLabel(jenisSel).toLowerCase() + '.'}</td></tr>`}</tbody>
       </table>
       </div>
     </div>
   `;
 }
+/* ---------- FILTER WAKA pada Program Harian ---------- */
+function applyHarianWakaFilter(list){
+  const f = window._harianWaka || '';
+  if(!f) return list;
+  if(f==='__none') return list.filter(p=>!p.wakaId);
+  return list.filter(p=>p.wakaId===f);
+}
+function setHarianWakaFilter(val){ window._harianWaka = val || ''; render(); }
+function resetHarianFilter(){ window._harianWaka = ''; render(); }
 function renderProgramHarianPage(){
   const isWaka = session && session.role==='waka';
   const myWakaId = isWaka ? getMyWakaId() : null;
@@ -1407,6 +1548,8 @@ function renderProgramHarianPage(){
   const wakaMap = {};
   wakas.forEach(w=>wakaMap[w.id]=w.nama);
   if(isWaka) programs = programs.filter(p=>p.wakaId===myWakaId);
+  const programsAllCount = programs.length;
+  programs = applyHarianWakaFilter(programs);
   const eligiblePrograms = programs.filter(p=>!!wakaMap[p.wakaId]);
   const allDone = eligiblePrograms.length>0 && eligiblePrograms.every(p=>{
     const cur = submissions.find(s=>s.programId===p.id && s.periode===selectedDate);
@@ -1453,9 +1596,6 @@ function renderProgramHarianPage(){
       <div class="card-head">
         <div><h3>Program Harian</h3><div class="hint">${isWaka? 'Centang tugas yang sudah selesai dikerjakan pada tanggal terpilih.' : 'Seluruh program harian dari semua waka.'}</div></div>
         <div class="toolbar">
-          <label style="font-size:12.5px;color:var(--muted);margin-right:2px;">Tanggal:</label>
-          <input type="date" value="${selectedDate}" onchange="onHarianDateChange(this.value)">
-          ${selectedDate!==todayHarianStr() ? `<button class="btn btn-ghost btn-sm" onclick="onHarianDateChange('${todayHarianStr()}')">Hari Ini</button>` : ''}
           ${canAccess('selesaiSemua') ? `<button class="btn btn-accent" onclick="checkAllHarianSelesai()">&#10003; Centang Selesai Semua</button>` : ''}
           ${canAccess('shareWA') ? `<button class="btn" style="background:#25D366;color:#fff;" onclick="shareHarianWA()">&#128172; Share WA</button>` : ''}
           ${bulkDeleteButton('programsHarian')}
@@ -1466,21 +1606,35 @@ function renderProgramHarianPage(){
           ${canAccess('tambahProgram') ? `<button class="btn btn-primary" onclick="openProgramModal(null,'harian')">+ Tambah Program Harian</button>` : ''}
         </div>
       </div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--line);">
+        <span style="display:flex;align-items:center;gap:8px;">
+          <label style="font-size:12.5px;color:var(--muted);margin-right:2px;">Tanggal:</label>
+          <input type="date" value="${selectedDate}" onchange="onHarianDateChange(this.value)">
+          ${selectedDate!==todayHarianStr() ? `<button class="btn btn-ghost btn-sm" onclick="onHarianDateChange('${todayHarianStr()}')">Hari Ini</button>` : ''}
+        </span>
+        ${isWaka ? '' : `<span style="width:1px;height:20px;background:var(--line);"></span>
+        <span style="font-size:12.5px;font-weight:600;">Filter</span>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);">Waka
+          <select style="width:auto;min-width:120px;" onchange="setHarianWakaFilter(this.value)">
+            <option value="">Semua</option>
+            <option value="__none" ${window._harianWaka==='__none'?'selected':''}>Belum ditentukan</option>
+            ${wakas.map(w=>`<option value="${escapeHtml(String(w.id))}" ${String(window._harianWaka||'')===String(w.id)?'selected':''}>${escapeHtml(String(w.nama))}</option>`).join('')}
+          </select>
+        </label>`}
+        ${window._harianWaka ? `<button class="btn btn-ghost btn-sm" onclick="resetHarianFilter()">Reset Filter</button>` : ''}
+        <span style="font-size:12.5px;color:var(--muted);margin-left:auto;">${programs.length} dari ${programsAllCount} program</span>
+      </div>
       <div class="tbl-wrap">
       <table>
         <thead><tr>${bulkCheckboxHeaderCell('programsHarian', programs.map(p=>p.id))}<th style="width:50px;">No</th><th style="width:190px;">Nama Program</th><th style="width:180px;">Waka</th><th style="width:130px;">${canAccess('selesaiSemua') ? `<label style="display:flex;align-items:center;gap:8px;cursor:${eligiblePrograms.length>0?'pointer':'not-allowed'};font-weight:inherit;"><input type="checkbox" class="chk" ${allDone?'checked':''} ${eligiblePrograms.length===0?'disabled':''} onchange="toggleHarianSelesaiSemua(this.checked)">Selesai</label>` : 'Selesai'}</th><th style="width:160px;">Tanggal &amp; Jam</th><th style="width:130px;">Status</th><th style="width:150px;text-align:center;">Aksi</th></tr></thead>
-        <tbody>${rows || `<tr class="empty-row"><td colspan="${bulkEnabled()?8:7}">Belum ada program harian.</td></tr>`}</tbody>
+        <tbody>${rows || `<tr class="empty-row"><td colspan="${bulkEnabled()?8:7}">${window._harianWaka ? 'Tidak ada program harian yang cocok dengan filter.' : 'Belum ada program harian.'}</td></tr>`}</tbody>
       </table>
       </div>
     </div>
   `;
 }
-function labelPeriodeProgram(jenis){
-  const bulanList = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
-  const now = new Date();
-  if(jenis==='bulanan') return bulanList[now.getMonth()] + ' ' + now.getFullYear();
-  if(jenis==='tahunan') return 'Tahun ' + now.getFullYear();
-  return weekLabel(getWeekKey(now));
+function labelPeriodeProgram(jenis, period){
+  return labelForPeriod(jenis, period || currentPeriod(jenis));
 }
 function shareProgramWA(jenis){
   if(!['mingguan','bulanan','tahunan'].includes(jenis)) return;
@@ -1488,13 +1642,15 @@ function shareProgramWA(jenis){
   const myWakaId = isWaka ? getMyWakaId() : null;
   let programs = load('programs', []).filter(p=>p.jenis===jenis);
   if(isWaka) programs = programs.filter(p=>p.wakaId===myWakaId);
+  programs = applyProgramFilter(programs, jenis);
   if(programs.length===0){ toast('Tidak ada program ' + jenisLabel(jenis).toLowerCase() + ' untuk dibagikan'); return; }
   const wakaMap = {};
   load('wakas', []).forEach(w=>{ wakaMap[w.id] = w.nama; });
   const WI = getWaIcons();
-  let text = '*PROGRAM ' + jenisLabel(jenis).toUpperCase() + '*\n_' + labelPeriodeProgram(jenis) + '_\n\n';
+  const periodeWA = selectedProgPeriod(jenis);
+  let text = '*PROGRAM ' + jenisLabel(jenis).toUpperCase() + '*\n_' + labelPeriodeProgram(jenis, periodeWA) + '_\n\n';
   programs.forEach(p=>{
-    const current = getCurrentSubmissionForProgram(p.id, jenis);
+    const current = getCurrentSubmissionForProgram(p.id, jenis, periodeWA);
     let ket;
     if(!current) ket = WI.telat + ' Belum diajukan';
     else if(current.status==='disetujui') ket = WI.tepat + ' Selesai';
@@ -1524,6 +1680,7 @@ function shareHarianWA(){
   const selectedDate = window._harianFilterDate || todayHarianStr();
   let programs = load('programs', []).filter(p=>p.jenis==='harian');
   if(isWaka) programs = programs.filter(p=>p.wakaId===myWakaId);
+  programs = applyHarianWakaFilter(programs);
   if(programs.length===0){ toast('Tidak ada program harian untuk dibagikan'); return; }
   const wakaMap = {};
   load('wakas', []).forEach(w=>{ wakaMap[w.id] = w.nama; });
@@ -1606,6 +1763,7 @@ function toggleHarianSelesaiSemua(checked){
   const wakaIds = new Set(load('wakas', []).map(w=>w.id));
   let programs = load('programs', []).filter(p=>p.jenis==='harian');
   if(isWaka) programs = programs.filter(p=>p.wakaId===myWakaId);
+  programs = applyHarianWakaFilter(programs);
   const eligible = programs.filter(p=>wakaIds.has(p.wakaId));
   if(eligible.length===0){ toast('Belum ada program harian dengan waka penanggung jawab'); render(); return; }
   const list = load('submissions', []);
@@ -1644,9 +1802,16 @@ function exportProgramXLSX(mode, jenisFilter){
     rows = programs.map(p=>[p.nama, wakaMap[p.wakaId]||'']);
   } else {
     programs = programs.filter(p=>p.jenis!=='harian' && (!jenisFilter || p.jenis===jenisFilter));
-    const isBT = (jenisFilter==='bulanan' || jenisFilter==='tahunan');
-    header = isBT ? ['Nama Program','Jenis','Waka','Bulan','Tahun'] : ['Nama Program','Jenis','Waka','Hari'];
-    rows = programs.map(p=> isBT ? [p.nama, p.jenis, wakaMap[p.wakaId]||'', p.bulan||'', p.tahun||''] : [p.nama, p.jenis, wakaMap[p.wakaId]||'', p.hari||'']);
+    if(jenisFilter==='tahunan'){
+      header = ['Nama Program','Jenis','Waka','Bulan','Tahun'];
+      rows = programs.map(p=>[p.nama, p.jenis, wakaMap[p.wakaId]||'', p.bulan||'', p.tahun||'']);
+    } else if(jenisFilter==='bulanan'){
+      header = ['Nama Program','Jenis','Waka'];
+      rows = programs.map(p=>[p.nama, p.jenis, wakaMap[p.wakaId]||'']);
+    } else {
+      header = ['Nama Program','Jenis','Waka','Hari'];
+      rows = programs.map(p=>[p.nama, p.jenis, wakaMap[p.wakaId]||'', p.hari||'']);
+    }
   }
   if(programs.length===0){ toast('Tidak ada data untuk diexport'); return; }
   if(typeof XLSX==='undefined'){ toast('Gagal memuat modul Excel, coba muat ulang halaman'); return; }
@@ -1690,7 +1855,7 @@ function importProgramXLSX(input, mode, defaultJenis){
         if(!['mingguan','bulanan','tahunan'].includes(jenis)) jenis = defaultJenis || 'mingguan';
         wakaNama = (cols[2]||'').trim();
         if(jenis==='mingguan') hari = normalHari(cols[3]);
-        else if(jenis==='bulanan' || jenis==='tahunan'){
+        else if(jenis==='tahunan'){
           /* Kolom ke-4 = Bulan, kolom ke-5 = Tahun. Format lama program tahunan
              (kolom ke-4 langsung berisi tahun) tetap dikenali. */
           if(jenis==='tahunan' && normalTahun(cols[3]) && !cols[4]){ tahun = normalTahun(cols[3]); }
@@ -1749,13 +1914,13 @@ function openProgramModal(id, defaultJenis){
         ${HARI_PROGRAM.map(hr=>`<option value="${hr}" ${p&&p.hari===hr?'selected':''}>${hr}</option>`).join('')}
       </select>
     </div>
-    <div class="field" id="fProgBulanWrap" style="${(_jenisAwal==='bulanan' || _jenisAwal==='tahunan') ? '' : 'display:none;'}"><label>Bulan</label>
+    <div class="field" id="fProgBulanWrap" style="${_jenisAwal==='tahunan' ? '' : 'display:none;'}"><label>Bulan</label>
       <select id="fProgBulan">
         <option value="">- Belum ditentukan -</option>
         ${BULAN_PROGRAM.map(b=>`<option value="${b}" ${p&&p.bulan===b?'selected':''}>${b}</option>`).join('')}
       </select>
     </div>
-    <div class="field" id="fProgTahunWrap" style="${(_jenisAwal==='bulanan' || _jenisAwal==='tahunan') ? '' : 'display:none;'}"><label>Tahun</label>
+    <div class="field" id="fProgTahunWrap" style="${_jenisAwal==='tahunan' ? '' : 'display:none;'}"><label>Tahun</label>
       <select id="fProgTahun">
         <option value="">- Belum ditentukan -</option>
         ${_tahunList.map(y=>`<option value="${y}" ${p&&String(p.tahun)===String(y)?'selected':''}>${y}</option>`).join('')}
@@ -1767,8 +1932,8 @@ function openProgramModal(id, defaultJenis){
     const jenis = document.getElementById('fProgJenis').value;
     const wakaId = document.getElementById('fProgWaka').value;
     const hari = (jenis==='mingguan' && document.getElementById('fProgHari')) ? document.getElementById('fProgHari').value : '';
-    const bulan = ((jenis==='bulanan' || jenis==='tahunan') && document.getElementById('fProgBulan')) ? document.getElementById('fProgBulan').value : '';
-    const tahun = ((jenis==='bulanan' || jenis==='tahunan') && document.getElementById('fProgTahun')) ? document.getElementById('fProgTahun').value : '';
+    const bulan = (jenis==='tahunan' && document.getElementById('fProgBulan')) ? document.getElementById('fProgBulan').value : '';
+    const tahun = (jenis==='tahunan' && document.getElementById('fProgTahun')) ? document.getElementById('fProgTahun').value : '';
     if(!nama){ toast('Nama program wajib diisi'); return false; }
     const list = load('programs', []);
     if(p){
@@ -1832,14 +1997,14 @@ function notifyWakaKeputusan(sub){
   const wt = formatTanggalWaktuWIB(sub.approvedAt);
   sendEmailNotification('keputusan', w.email.trim(), {namaWaka:w.nama, jabatan:w.jabatan, tanggal:wt.tanggal, waktu:wt.waktu, program:sub.programNama, ket:sub.status});
 }
-function openAjukanModal(programId){
+function openAjukanModal(programId, defaultDate){
   const programs = load('programs', []);
   const wakas = load('wakas', []);
   const p = programs.find(x=>x.id===programId);
   if(!p) return;
   const pelaksana = wakas.find(w=>w.id===p.wakaId);
   if(!pelaksana){ toast('Tentukan Waka Penanggung Jawab program ini terlebih dahulu lewat tombol Edit'); return; }
-  const dateField = `<input type="date" id="fAjukanTanggal" value="${todayStr()}">`;
+  const dateField = `<input type="date" id="fAjukanTanggal" value="${defaultDate || todayStr()}">`;
 
   window._fotoBase64 = '';
   const body = `
