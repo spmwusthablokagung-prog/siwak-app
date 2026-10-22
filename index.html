@@ -293,6 +293,9 @@ input[type="month"]::-webkit-calendar-picker-indicator{
   .menu-btn{display:flex !important;}
   .content{padding:16px;}
   .topbar{padding:0 14px;}
+  /* Tampilan mobile: header tabel Data Program ikut bergeser saat halaman digulir */
+  .tbl-wrap.tbl-sticky{overflow-x:auto;overflow-y:visible;max-height:none;min-height:0;}
+  .tbl-sticky thead th{position:static;box-shadow:none;}
 }
 .menu-btn{display:flex;width:38px;height:38px;border-radius:8px;border:1px solid var(--line);background:var(--surface);align-items:center;justify-content:center;font-size:16px;}
 @media (min-width:861px){
@@ -2369,20 +2372,24 @@ function labelBulanKey(key){
   return (NAMA_BULAN_PANJANG[Number(p[1])-1] || key) + ' ' + p[0];
 }
 /* Statistik satu waka pada satu bulan ('YYYY-MM') */
+/* Program HARIAN: Jumlah Program satu bulan = jumlah program x jumlah hari dalam bulan itu
+   (hitungan murni dari daftar program, tidak bergantung centang / approve).
+   Bulan yang belum dimulai belum dihitung untuk prosentase (target = 0). */
 function statHarianBulan(progIds, byProgram, monthKey, today){
   const y = Number(monthKey.slice(0,4)), m = Number(monthKey.slice(5,7));
-  const first = monthKey + '-01';
-  const last = localDateStr(new Date(y, m, 0));
-  const end = last < today ? last : today;
-  const days = dayDiffInclusive(first, end);
+  const monthDays = new Date(y, m, 0).getDate();
+  const started = (monthKey + '-01') <= today;
+  const jumlah = progIds.length * monthDays;
   let selesai = 0; const ids = [];
-  progIds.forEach(pid=>{
-    (byProgram[pid] || []).forEach(s=>{
-      if(typeof s.periode==='string' && s.periode.slice(0,7)===monthKey && s.periode<=end){ selesai++; ids.push(s.id); }
+  if(started){
+    progIds.forEach(pid=>{
+      (byProgram[pid] || []).forEach(s=>{
+        if(typeof s.periode==='string' && s.periode.slice(0,7)===monthKey){ selesai++; ids.push(s.id); }
+      });
     });
-  });
-  const target = progIds.length * days;
-  return {days, units:days, target, selesai, ids, pct: target>0 ? Math.round(selesai/target*100) : null};
+  }
+  const target = started ? jumlah : 0;
+  return {days:monthDays, monthDays, units:monthDays, started, jumlah, target, selesai, ids, pct: target>0 ? Math.round(selesai/target*100) : null};
 }
 /* Minggu (Jumat-Kamis) yang masuk ke sebuah bulan: minggu dihitung milik bulan tempat
    hari Senin-nya berada (hari ke-4 dari 7 hari = mayoritas hari minggu itu). */
@@ -2398,16 +2405,43 @@ function weeksOfMonth(monthKey){
   }
   return out;
 }
-/* Statistik satu waka untuk program MINGGUAN pada satu bulan: target = program x minggu yang sudah dimulai */
-function statMingguanBulan(progIds, byProgram, monthKey, today){
-  const weeks = weeksOfMonth(monthKey).filter(w=>w.start<=today);
-  const keys = new Set(weeks.map(w=>w.key));
-  let selesai = 0; const ids = [];
+/* Program MINGGUAN per bulan: dihitung dari kolom HARI pada program.
+   Jumlah Program satu bulan = jumlah tanggal bulan itu yang jatuh pada hari program
+   (mis. program hari Sabtu x jumlah hari Sabtu dalam bulan tsb). Pengajuan mingguan dihitung
+   ke bulan tempat tanggal pelaksanaannya (hari program di dalam minggu Jumat-Kamis) berada,
+   sehingga selesai tidak pernah melebihi jumlah program pada bulan itu.
+   Program yang belum diisi harinya belum bisa dihitung (dicatat di tanpaHari). */
+const HARI_DOW = {Minggu:0, Senin:1, Selasa:2, Rabu:3, Kamis:4, Jumat:5, Sabtu:6};
+function countWeekdayInMonth(monthKey, dow){
+  const y = Number(monthKey.slice(0,4)), m = Number(monthKey.slice(5,7));
+  const n = new Date(y, m, 0).getDate();
+  let c = 0;
+  for(let d=1; d<=n; d++){ if(new Date(y, m-1, d).getDay()===dow) c++; }
+  return c;
+}
+function statMingguanBulan(progIds, byProgram, monthKey, today, progById){
+  progById = progById || {};
+  const started = (monthKey + '-01') <= today;
+  let jumlah = 0, selesai = 0, tanpaHari = 0;
+  const ids = [], rincian = [];
   progIds.forEach(pid=>{
-    (byProgram[pid] || []).forEach(s=>{ if(keys.has(s.periode)){ selesai++; ids.push(s.id); } });
+    const p = progById[pid];
+    const idx = p ? HARI_PROGRAM.indexOf(p.hari) : -1;
+    if(idx<0){ tanpaHari++; return; }
+    const c = countWeekdayInMonth(monthKey, HARI_DOW[p.hari]);
+    jumlah += c;
+    rincian.push(p.nama + ' (' + p.hari + '): ' + c + 'x');
+    if(started){
+      (byProgram[pid] || []).forEach(s=>{
+        const r = weekRange(s.periode);
+        if(!r) return;
+        const dt = new Date(r.start.getFullYear(), r.start.getMonth(), r.start.getDate() + idx);
+        if(localDateStr(dt).slice(0,7)===monthKey){ selesai++; ids.push(s.id); }
+      });
+    }
   });
-  const target = progIds.length * weeks.length;
-  return {units:weeks.length, target, selesai, ids, pct: target>0 ? Math.round(selesai/target*100) : null};
+  const target = started ? jumlah : 0;
+  return {units:weeksOfMonth(monthKey).length, started, jumlah, tanpaHari, rincian, target, selesai, ids, pct: target>0 ? Math.round(selesai/target*100) : null};
 }
 /* Program BULANAN: satu bulan = satu periode. Target = jumlah program jika bulannya sudah dimulai. */
 function statBulananBulan(progIds, byProgram, monthKey, today){
@@ -2421,8 +2455,8 @@ function statBulananBulan(progIds, byProgram, monthKey, today){
   const target = progIds.length * units;
   return {units, target, selesai, ids, pct: target>0 ? Math.round(selesai/target*100) : null};
 }
-function statRekapBulan(jenis, progIds, byProgram, monthKey, today){
-  if(jenis==='mingguan') return statMingguanBulan(progIds, byProgram, monthKey, today);
+function statRekapBulan(jenis, progIds, byProgram, monthKey, today, progById){
+  if(jenis==='mingguan') return statMingguanBulan(progIds, byProgram, monthKey, today, progById);
   if(jenis==='bulanan') return statBulananBulan(progIds, byProgram, monthKey, today);
   return statHarianBulan(progIds, byProgram, monthKey, today);
 }
@@ -2441,6 +2475,10 @@ function renderRekapRange(jenis, mode, wakas, progList, submissions){
   submissions.forEach(s=>{
     if(s.jenis===jenis && s.status==='disetujui'){ (byProgram[s.programId] = byProgram[s.programId] || []).push(s); }
   });
+  const progById = {};
+  progList.forEach(p=>{ progById[p.id] = p; });
+  const tanpaHariList = jenis==='mingguan' ? progList.filter(p=>!HARI_PROGRAM.includes(p.hari)) : [];
+  const warnHtml = tanpaHariList.length ? `<div style="padding:10px 20px;border-bottom:1px solid var(--line);font-size:12.5px;background:var(--accent-soft,#fff7e6);">&#9888; ${tanpaHariList.length} program mingguan belum diisi <b>Hari</b>-nya sehingga belum ikut dihitung: ${escapeHtml(tanpaHariList.slice(0,5).map(p=>p.nama).join(', '))}${tanpaHariList.length>5 ? ', dst.' : ''}. Isi lewat Data Program &rsaquo; Program Mingguan &rsaquo; Edit.</div>` : '';
   const subtabs = ['harian','mingguan','bulanan','tahunan'].map(j=>`
     <div class="subtab ${j===jenis?'active':''}" onclick="navigate('rekap','${j}')" style="cursor:pointer;">${jenisLabel(j)}</div>
   `).join('');
@@ -2457,14 +2495,14 @@ function renderRekapRange(jenis, mode, wakas, progList, submissions){
       <input type="month" value="${escapeHtml(bulan)}" onchange="onRekapHarianBulan(this.value)">
       ${bulan!==nowBulan ? `<button class="btn btn-ghost btn-sm" onclick="resetRekapHarianRange()">Bulan Ini</button>` : ''}`;
     title = `Rekap Program ${jenisLabel(jenis)} &mdash; Satu Bulan`;
-    const st0 = statRekapBulan(jenis, [], byProgram, bulan, today);
+    const st0 = statRekapBulan(jenis, [], byProgram, bulan, today, progById);
     const wkAll = jenis==='mingguan' ? weeksOfMonth(bulan) : [];
     const wkInfo = wkAll.length ? ` (minggu ke-${wkAll[0].no}${wkAll.length>1 ? ' s/d ke-'+wkAll[wkAll.length-1].no : ''})` : '';
     hint = `${escapeHtml(labelBulanKey(bulan))} &middot; ${wkAll.length ? wkAll.length+' minggu'+wkInfo+', ' : ''}${st0.units} ${unit} berjalan &middot; target = jumlah program &times; ${unit} berjalan`;
     thead = `<tr><th style="width:50px;">No</th><th style="width:190px;">Nama Waka</th><th style="width:150px;">Jabatan</th><th style="width:130px;">Jumlah Program</th><th style="width:110px;">${Unit} Berjalan</th><th style="width:110px;">Target</th><th style="width:130px;">Jumlah Selesai</th><th style="width:190px;text-align:center;">Prosentase</th></tr>`;
     let tProg = 0, tTarget = 0, tSelesai = 0;
     rows = rowsInfo.map((r,i)=>{
-      const st = statRekapBulan(jenis, r.progIds, byProgram, bulan, today);
+      const st = statRekapBulan(jenis, r.progIds, byProgram, bulan, today, progById);
       tProg += r.progIds.length; tTarget += st.target; tSelesai += st.selesai;
       return `<tr>
         <td>${i+1}</td>
@@ -2481,6 +2519,45 @@ function renderRekapRange(jenis, mode, wakas, progList, submissions){
       const tp = tTarget>0 ? Math.round(tSelesai/tTarget*100) : null;
       footer = `<tr style="font-weight:700;background:var(--surface-2);"><td colspan="3" style="text-align:right;">Total</td><td>${tProg} program</td><td>${st0.units} ${unit}</td><td>${tTarget}</td><td>${tSelesai}</td><td>${pctBarCell(tp)}</td></tr>`;
     }
+    if(jenis==='harian'){
+      /* Program harian: Jumlah Program = jumlah program x jumlah hari dalam bulan */
+      const md = st0.monthDays;
+      hint = `${escapeHtml(labelBulanKey(bulan))} &middot; ${md} hari &middot; jumlah program = jumlah program harian &times; ${md} hari (dihitung dari daftar program, tanpa melihat sudah dicentang atau disetujui)`;
+      thead = `<tr><th style="width:50px;">No</th><th style="width:190px;">Nama Waka</th><th style="width:150px;">Jabatan</th><th style="width:190px;">Jumlah Program</th><th style="width:130px;">Jumlah Selesai</th><th style="width:190px;text-align:center;">Prosentase</th></tr>`;
+      let gJumlah = 0, gSelesai = 0, gTarget = 0, gProg = 0;
+      rows = rowsInfo.map((r,i)=>{
+        const st = statHarianBulan(r.progIds, byProgram, bulan, today);
+        gJumlah += st.jumlah; gSelesai += st.selesai; gTarget += st.target; gProg += r.progIds.length;
+        return `<tr>
+          <td>${i+1}</td>
+          <td>${escapeHtml(r.w.nama)}</td>
+          <td>${escapeHtml(r.w.jabatan||'-')}</td>
+          <td><b>${st.jumlah}</b> program<div style="font-size:11px;color:var(--muted);">${r.progIds.length} program &times; ${st.monthDays} hari</div></td>
+          <td>${st.selesai>0 ? `<button class="link-count" onclick='openRekapDetail(${JSON.stringify(st.ids)}, "${escapeHtml(r.w.nama)}")'>${st.selesai}</button>` : `<span style="color:var(--muted);">0</span>`}</td>
+          <td>${pctBarCell(st.pct)}</td>
+        </tr>`;
+      }).join('');
+      footer = rowsInfo.length>0 ? `<tr style="font-weight:700;background:var(--surface-2);"><td colspan="3" style="text-align:right;">Total</td><td>${gJumlah} program<div style="font-size:11px;color:var(--muted);font-weight:500;">${gProg} program &times; ${md} hari</div></td><td>${gSelesai}</td><td>${pctBarCell(gTarget>0 ? Math.round(gSelesai/gTarget*100) : null)}</td></tr>` : '';
+    }
+    if(jenis==='mingguan'){
+      /* Program mingguan: Jumlah Program = pelaksanaan tiap program dalam bulan itu (sesuai kolom Hari) */
+      hint = `${escapeHtml(labelBulanKey(bulan))} &middot; jumlah program = jumlah pelaksanaan tiap program mingguan pada bulan itu, dihitung dari hari yang diisi di Data Program (mis. program hari Sabtu &times; jumlah hari Sabtu dalam bulan)`;
+      thead = `<tr><th style="width:50px;">No</th><th style="width:190px;">Nama Waka</th><th style="width:150px;">Jabatan</th><th style="width:210px;">Jumlah Program</th><th style="width:130px;">Jumlah Selesai</th><th style="width:190px;text-align:center;">Prosentase</th></tr>`;
+      let gJumlah = 0, gSelesai = 0, gTarget = 0, gProg = 0;
+      rows = rowsInfo.map((r,i)=>{
+        const st = statMingguanBulan(r.progIds, byProgram, bulan, today, progById);
+        gJumlah += st.jumlah; gSelesai += st.selesai; gTarget += st.target; gProg += r.progIds.length - st.tanpaHari;
+        return `<tr>
+          <td>${i+1}</td>
+          <td>${escapeHtml(r.w.nama)}</td>
+          <td>${escapeHtml(r.w.jabatan||'-')}</td>
+          <td title="${escapeHtml(st.rincian.join('\n'))}"><b>${st.jumlah}</b> program<div style="font-size:11px;color:var(--muted);">${r.progIds.length - st.tanpaHari} program terjadwal${st.tanpaHari ? ' &middot; <span style="color:#b45309;">'+st.tanpaHari+' belum diberi hari</span>' : ''}</div></td>
+          <td>${st.selesai>0 ? `<button class="link-count" onclick='openRekapDetail(${JSON.stringify(st.ids)}, "${escapeHtml(r.w.nama)}")'>${st.selesai}</button>` : `<span style="color:var(--muted);">0</span>`}</td>
+          <td>${pctBarCell(st.pct)}</td>
+        </tr>`;
+      }).join('');
+      footer = rowsInfo.length>0 ? `<tr style="font-weight:700;background:var(--surface-2);"><td colspan="3" style="text-align:right;">Total</td><td>${gJumlah} program<div style="font-size:11px;color:var(--muted);font-weight:500;">${gProg} program terjadwal</div></td><td>${gSelesai}</td><td>${pctBarCell(gTarget>0 ? Math.round(gSelesai/gTarget*100) : null)}</td></tr>` : '';
+    }
   } else {
     const ta = selectedRekapTA();
     const nowTA = currentTahunAjaran();
@@ -2496,7 +2573,7 @@ function renderRekapRange(jenis, mode, wakas, progList, submissions){
       </select>
       ${ta!==nowTA ? `<button class="btn btn-ghost btn-sm" onclick="resetRekapHarianRange()">Tahun Ajaran Aktif</button>` : ''}`;
     title = `Rekap Program ${jenisLabel(jenis)} &mdash; Satu Tahun Ajaran`;
-    hint = `Tahun ajaran ${escapeHtml(taLabel)} (Juli ${ta} - Juni ${ta+1}) &middot; sesuai Pengaturan &middot; ${jenis==='bulanan' ? 'prosentase per bulan = program selesai / jumlah program bulanan' : 'prosentase per bulan = selesai / (jumlah program &times; '+unit+' berjalan)'}`;
+    hint = `Tahun ajaran ${escapeHtml(taLabel)} (Juli ${ta} - Juni ${ta+1}) &middot; sesuai Pengaturan &middot; ${jenis==='bulanan' ? 'prosentase per bulan = program selesai / jumlah program bulanan' : (jenis==='harian' ? 'prosentase per bulan = selesai / (jumlah program &times; jumlah hari dalam bulan)' : (jenis==='mingguan' ? 'prosentase per bulan = selesai / jumlah pelaksanaan program pada bulan itu (sesuai hari program)' : 'prosentase per bulan = selesai / (jumlah program &times; '+unit+' berjalan)'))}`;
     const months = [];
     for(let i=0;i<12;i++){
       const mm = ((6+i)%12)+1;
@@ -2511,7 +2588,7 @@ function renderRekapRange(jenis, mode, wakas, progList, submissions){
     rows = rowsInfo.map((r,i)=>{
       let sel = 0, tgt = 0;
       const cells = months.map((k,ci)=>{
-        const st = statRekapBulan(jenis, r.progIds, byProgram, k, today);
+        const st = statRekapBulan(jenis, r.progIds, byProgram, k, today, progById);
         sel += st.selesai; tgt += st.target;
         colTot[ci].sel += st.selesai; colTot[ci].tgt += st.target;
         if(st.pct===null) return `<td style="text-align:center;color:var(--muted);">-</td>`;
@@ -2533,7 +2610,7 @@ function renderRekapRange(jenis, mode, wakas, progList, submissions){
       footer = `<tr style="font-weight:700;background:var(--surface-2);"><td colspan="3" style="text-align:right;">Total</td><td>${gProg} program</td>${cellsTot}<td style="text-align:center;">${gTgt>0 ? `<b>${Math.round(gSel/gTgt*100)}%</b><div style="font-size:11px;color:var(--muted);font-weight:500;">${gSel}/${gTgt}</div>` : '-'}</td></tr>`;
     }
   }
-  const colspan = mode==='bulan' ? 8 : 17;
+  const colspan = mode==='bulan' ? ((jenis==='harian' || jenis==='mingguan') ? 6 : 8) : 17;
   return `
     <div class="subtabs">${subtabs}</div>
     <div class="card">
@@ -2541,6 +2618,7 @@ function renderRekapRange(jenis, mode, wakas, progList, submissions){
         <div><h3>${title}</h3><div class="hint">${hint}</div></div>
         <div class="toolbar">${rekapRangeModeSwitch(jenis)}${controls}<button class="btn btn-primary btn-sm" style="margin-left:10px;" onclick="printRekap()">Cetak Laporan</button></div>
       </div>
+      ${warnHtml}
       <div class="tbl-wrap">
       <table>
         <thead>${thead}</thead>
