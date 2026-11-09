@@ -251,7 +251,15 @@ input[type="month"]::-webkit-calendar-picker-indicator{
 .modal-head{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;}
 .modal-head h3{font-size:16.5px;}
 .modal-close{background:none;border:none;font-size:19px;color:var(--muted);line-height:1;}
-.modal-body{padding:20px 22px;overflow-y:auto;}
+.modal-body{padding:20px 22px;overflow-y:auto;position:relative;}
+/* Pilihan dengan kotak pencarian (searchable select): daftar MELAYANG di atas isi form, tidak menggeser */
+.ss-wrap{position:relative;}
+.ss-list{position:absolute;left:0;right:0;z-index:30;border:1px solid var(--line);border-radius:8px;max-height:240px;overflow-y:auto;background:var(--surface);box-shadow:0 10px 28px rgba(0,0,0,.18);}
+.ss-item{padding:8px 12px;cursor:pointer;font-size:13.5px;line-height:1.35;}
+.ss-item:hover,.ss-item.active{background:var(--primary-soft);}
+.ss-item.sel{font-weight:700;}
+.ss-item .ss-sub{font-size:12px;color:var(--muted);font-weight:400;}
+.ss-empty{padding:10px 12px;color:var(--muted);font-size:13px;}
 .modal-foot{padding:16px 22px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px;}
 .popup-list{list-style:none;margin:0;padding:0;}
 .popup-list li{padding:10px 0;border-bottom:1px solid var(--line);}
@@ -1546,6 +1554,12 @@ function renderProgramFilterBar(jenis, programsAll, shownCount, wakas, isWaka){
       <span style="font-size:12.5px;color:var(--muted);margin-left:auto;">${shownCount} dari ${programsAll.length} program</span>
     </div>`;
 }
+/* Sel Waka pada tabel program: nama di atas, jabatan di bawahnya */
+function wakaNamaJabatanHtml(wakaId){
+  const w = load('wakas', []).find(x=>x.id===wakaId);
+  if(!w) return '-';
+  return `<div>${escapeHtml(w.nama)}</div>${w.jabatan ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">${escapeHtml(w.jabatan)}</div>` : ''}`;
+}
 function renderProgramPage(jenisSub){
   const jenisSel = ['mingguan','bulanan','tahunan'].includes(jenisSub) ? jenisSub : 'mingguan';
   const _bt = [{label:'Bulan', key:'bulan'}, {label:'Tahun', key:'tahun'}];
@@ -1594,7 +1608,7 @@ function renderProgramPage(jenisSub){
       <td>${i+1}</td>
       <td>${escapeHtml(p.nama)}</td>
       ${extraCols.map(c=>{ const v = c.auto ? c.auto() : p[c.key]; return `<td>${v ? escapeHtml(String(v)) : '<span style="color:var(--muted);">-</span>'}</td>`; }).join('')}
-      <td>${escapeHtml(wakaMap[p.wakaId] || '-')}</td>
+      <td>${wakaNamaJabatanHtml(p.wakaId)}</td>
       <td><div class="row-actions center">
         ${ajukanBtn}
         ${isKepsek || isLocked ? '' : `<button class="btn btn-ghost btn-sm" onclick="openProgramModal('${p.id}')">Edit</button>`}
@@ -1620,7 +1634,7 @@ function renderProgramPage(jenisSub){
       ${renderProgramFilterBar(jenisSel, programsAll, programs.length, wakas, isWaka)}
       <div class="tbl-wrap tbl-sticky">
       <table>
-        <thead><tr>${bulkCheckboxHeaderCell('programs', programs.map(p=>p.id))}<th style="width:50px;">No</th><th style="width:230px;">Nama Program</th>${extraCols.map(c=>`<th style="width:110px;">${c.label}</th>`).join('')}<th style="width:170px;">Waka</th><th style="width:290px;text-align:center;">Aksi</th></tr></thead>
+        <thead><tr>${bulkCheckboxHeaderCell('programs', programs.map(p=>p.id))}<th style="width:50px;">No</th><th style="width:230px;">Nama Program</th>${extraCols.map(c=>`<th style="width:110px;">${c.label}</th>`).join('')}<th style="width:210px;">Waka</th><th style="width:290px;text-align:center;">Aksi</th></tr></thead>
         <tbody>${rows || `<tr class="empty-row"><td colspan="${(bulkEnabled()?5:4) + extraCols.length}">${isProgramFilterActive(jenisSel) ? 'Tidak ada program yang cocok dengan filter.' : 'Belum ada program ' + jenisLabel(jenisSel).toLowerCase() + '.'}</td></tr>`}</tbody>
       </table>
       </div>
@@ -1673,7 +1687,7 @@ function renderProgramHarianPage(){
       ${bulkCheckboxRowCell('programsHarian', p.id)}
       <td>${i+1}</td>
       <td>${escapeHtml(p.nama)}</td>
-      <td>${escapeHtml(wakaMap[p.wakaId] || '-')}</td>
+      <td>${wakaNamaJabatanHtml(p.wakaId)}</td>
       <td>
         <label style="display:flex;align-items:center;gap:8px;cursor:${hasPelaksana?'pointer':'not-allowed'};">
           <input type="checkbox" class="chk" ${isChecked?'checked':''} ${!hasPelaksana?'disabled':''} onchange="toggleHarianSelesai('${p.id}', this.checked)">
@@ -1722,9 +1736,10 @@ function renderProgramHarianPage(){
         ${window._harianWaka ? `<button class="btn btn-ghost btn-sm" onclick="resetHarianFilter()">Reset Filter</button>` : ''}
         <span style="font-size:12.5px;color:var(--muted);margin-left:auto;">${programs.length} dari ${programsAllCount} program</span>
       </div>
+      ${liburBannerHtml(selectedDate)}
       <div class="tbl-wrap tbl-sticky">
       <table>
-        <thead><tr>${bulkCheckboxHeaderCell('programsHarian', programs.map(p=>p.id))}<th style="width:50px;">No</th><th style="width:190px;">Nama Program</th><th style="width:180px;">Waka</th><th style="width:130px;">${canAccess('selesaiSemua') ? `<label style="display:flex;align-items:center;gap:8px;cursor:${eligiblePrograms.length>0?'pointer':'not-allowed'};font-weight:inherit;"><input type="checkbox" class="chk" ${allDone?'checked':''} ${eligiblePrograms.length===0?'disabled':''} onchange="toggleHarianSelesaiSemua(this.checked)">Selesai</label>` : 'Selesai'}</th><th style="width:160px;">Tanggal &amp; Jam</th><th style="width:130px;">Status</th><th style="width:150px;text-align:center;">Aksi</th></tr></thead>
+        <thead><tr>${bulkCheckboxHeaderCell('programsHarian', programs.map(p=>p.id))}<th style="width:50px;">No</th><th style="width:190px;">Nama Program</th><th style="width:210px;">Waka</th><th style="width:130px;">${canAccess('selesaiSemua') ? `<label style="display:flex;align-items:center;gap:8px;cursor:${eligiblePrograms.length>0?'pointer':'not-allowed'};font-weight:inherit;"><input type="checkbox" class="chk" ${allDone?'checked':''} ${eligiblePrograms.length===0?'disabled':''} onchange="toggleHarianSelesaiSemua(this.checked)">Selesai</label>` : 'Selesai'}</th><th style="width:160px;">Tanggal &amp; Jam</th><th style="width:130px;">Status</th><th style="width:150px;text-align:center;">Aksi</th></tr></thead>
         <tbody>${rows || `<tr class="empty-row"><td colspan="${bulkEnabled()?8:7}">${window._harianWaka ? 'Tidak ada program harian yang cocok dengan filter.' : 'Belum ada program harian.'}</td></tr>`}</tbody>
       </table>
       </div>
@@ -1776,6 +1791,11 @@ function shareHarianWA(){
   const isWaka = session && session.role==='waka';
   const myWakaId = isWaka ? getMyWakaId() : null;
   const selectedDate = window._harianFilterDate || todayHarianStr();
+  const _libur = liburInfo(selectedDate);
+  if(_libur){
+    window.open('https://wa.me/?text=' + encodeURIComponent('*TUGAS HARIAN*\n_' + formatTanggalLengkap(selectedDate) + '_\n\n*HARI LIBUR*\n' + _libur.ket), '_blank');
+    return;
+  }
   let programs = load('programs', []).filter(p=>p.jenis==='harian');
   if(isWaka) programs = programs.filter(p=>isMyWakaId(p.wakaId));
   programs = applyHarianWakaFilter(programs);
@@ -1978,6 +1998,110 @@ function importProgramXLSX(input, mode, defaultJenis){
   reader.readAsArrayBuffer(file);
   input.value = '';
 }
+/* =========================================================
+   SEARCHABLE SELECT: kotak pilihan yang bisa dicari dengan mengetik
+   Nilai terpilih disimpan di <input type="hidden" id="ID"> sehingga
+   dibaca seperti <select> biasa: document.getElementById('ID').value
+========================================================= */
+window._ss = window._ss || {};
+function renderSearchSelect(id, options, value, placeholder){
+  window._ss[id] = {options: options, value: String(value==null ? '' : value), visible: [], active: -1};
+  const cur = options.find(o=>String(o.value)===String(value==null ? '' : value));
+  return `<div id="ss_${id}" class="ss-wrap">
+    <input type="hidden" id="${id}" value="${escapeHtml(String(value==null ? '' : value))}">
+    <input type="text" id="${id}_text" autocomplete="off" placeholder="${escapeHtml(placeholder||'Ketik untuk mencari...')}" value="${escapeHtml(cur ? cur.label : '')}"
+      onfocus="ssOpen('${id}')" onclick="ssClick('${id}')" oninput="ssFilter('${id}')" onkeydown="ssKey(event,'${id}')" onblur="ssBlur('${id}')">
+    <div class="ss-list" id="${id}_list" style="display:none;"></div>
+  </div>`;
+}
+function ssRender(id, query){
+  const st = window._ss[id]; const list = document.getElementById(id+'_list');
+  if(!st || !list) return;
+  const q = String(query||'').trim().toLowerCase();
+  st.visible = [];
+  const html = st.options.map((o,i)=>{
+    const hay = (o.label + ' ' + (o.sub||'')).toLowerCase();
+    if(q && hay.indexOf(q)===-1) return '';
+    st.visible.push(i);
+    const isSel = String(o.value)===st.value;
+    const main = o.nama ? o.nama : o.label;
+    return `<div class="ss-item ${isSel?'sel':''}" data-i="${i}" onmousedown="event.preventDefault(); ssPickIdx('${id}', ${i})">${escapeHtml(main)}${o.sub ? `<div class="ss-sub">${escapeHtml(o.sub)}</div>` : ''}</div>`;
+  }).join('');
+  list.innerHTML = html || '<div class="ss-empty">Tidak ada yang cocok.</div>';
+  st.active = -1;
+}
+function ssClick(id){
+  const list = document.getElementById(id+'_list');
+  if(list && list.style.display==='none') ssOpen(id);
+}
+function ssPosition(id){
+  const wrap = document.getElementById('ss_'+id), list = document.getElementById(id+'_list'), t = document.getElementById(id+'_text');
+  if(!wrap || !list || !t) return;
+  const gap = t.offsetHeight + 4;
+  list.style.top = ''; list.style.bottom = ''; list.style.maxHeight = '240px';
+  const body = wrap.closest('.modal-body');
+  if(!body){ list.style.top = gap + 'px'; return; }
+  const below = body.scrollTop + body.clientHeight - (wrap.offsetTop + t.offsetHeight) - 10;
+  const above = wrap.offsetTop - body.scrollTop - 10;
+  const wanted = Math.min(240, list.scrollHeight + 2);
+  if(below >= wanted || below >= above){
+    list.style.top = gap + 'px';
+    list.style.maxHeight = Math.max(110, Math.min(240, below)) + 'px';
+  } else {
+    list.style.bottom = gap + 'px';
+    list.style.maxHeight = Math.max(110, Math.min(240, above)) + 'px';
+  }
+}
+function ssOpen(id){
+  const t = document.getElementById(id+'_text'); const list = document.getElementById(id+'_list');
+  if(!t || !list) return;
+  ssRender(id, '');
+  list.style.display = '';
+  ssPosition(id);
+  t.select();
+}
+function ssFilter(id){
+  const t = document.getElementById(id+'_text'); const list = document.getElementById(id+'_list');
+  ssRender(id, t.value);
+  list.style.display = '';
+  ssPosition(id);
+}
+function ssPickIdx(id, i){
+  const st = window._ss[id]; if(!st) return;
+  const o = st.options[i]; if(!o) return;
+  st.value = String(o.value);
+  document.getElementById(id).value = st.value;
+  document.getElementById(id+'_text').value = o.label;
+  document.getElementById(id+'_list').style.display = 'none';
+}
+function ssBlur(id){
+  setTimeout(()=>{
+    const st = window._ss[id]; const list = document.getElementById(id+'_list'); const t = document.getElementById(id+'_text');
+    if(!st || !list || !t) return;
+    list.style.display = 'none';
+    const cur = st.options.find(o=>String(o.value)===st.value);
+    t.value = cur ? cur.label : '';
+  }, 120);
+}
+function ssKey(e, id){
+  const st = window._ss[id]; const list = document.getElementById(id+'_list');
+  if(!st || !list) return;
+  const items = list.querySelectorAll('.ss-item');
+  if(e.key==='ArrowDown' || e.key==='ArrowUp'){
+    e.preventDefault();
+    if(list.style.display==='none'){ ssFilter(id); return; }
+    if(!items.length) return;
+    st.active = e.key==='ArrowDown' ? Math.min(items.length-1, st.active+1) : Math.max(0, st.active-1);
+    items.forEach((el,k)=>el.classList.toggle('active', k===st.active));
+    if(items[st.active]) items[st.active].scrollIntoView({block:'nearest'});
+  } else if(e.key==='Enter'){
+    e.preventDefault();
+    const k = st.active>=0 ? st.active : (items.length===1 ? 0 : -1);
+    if(k>=0 && st.visible[k]!==undefined) ssPickIdx(id, st.visible[k]);
+  } else if(e.key==='Escape'){
+    list.style.display = 'none';
+  }
+}
 function openProgramModal(id, defaultJenis){
   const programs = load('programs', []);
   const _isWakaRole = session && session.role==='waka';
@@ -1996,13 +2120,14 @@ function openProgramModal(id, defaultJenis){
     : `<select id="fProgJenis" onchange="toggleProgExtra(this.value)">
         ${['mingguan','bulanan','tahunan'].map(j=>`<option value="${j}" ${(p ? p.jenis===j : defaultJenis===j)?'selected':''}>${jenisLabel(j)}</option>`).join('')}
       </select>`;
+  const _wakaOpts = [];
+  if(!(_isWakaRole && wakas.length>0)) _wakaOpts.push({value:'', label:'- Belum ditentukan -', sub:''});
+  wakas.forEach(w=>_wakaOpts.push({value:w.id, label:w.nama + (w.jabatan ? ' (' + w.jabatan + ')' : ''), nama:w.nama, sub:w.jabatan||''}));
+  const _wakaSel = p ? (p.wakaId || '') : ((_isWakaRole && wakas[0]) ? wakas[0].id : '');
   const body = `
     <div class="field"><label>Nama Program</label><input type="text" id="fProgNama" value="${p?escapeHtml(p.nama):''}" placeholder="Contoh: Supervisi Kelas"></div>
     <div class="field"><label>Waka Penanggung Jawab</label>
-      <select id="fProgWaka">
-        ${(_isWakaRole && wakas.length>0) ? '' : '<option value="">- Belum ditentukan -</option>'}
-        ${wakas.map((w,wi)=>`<option value="${w.id}" ${(p ? p.wakaId===w.id : (_isWakaRole && wi===0)) ? 'selected' : ''}>${escapeHtml(w.nama)}</option>`).join('')}
-      </select>
+      ${renderSearchSelect('fProgWaka', _wakaOpts, _wakaSel, 'Ketik nama atau jabatan untuk mencari...')}
     </div>
     <div class="field"><label>Jenis Program</label>
       ${jenisFieldHtml}
@@ -2349,6 +2474,7 @@ function renderRekapPage(sub){
 
   window._rekapPeriod = window._rekapPeriod || {};
   const activePeriod = window._rekapPeriod[jenis] || currentPeriod(jenis);
+  const liburDay = jenis==='harian' ? liburInfo(activePeriod) : null;
 
   const rows = wakas.map((w,i)=>{
     const myPrograms = progOfJenis.filter(p=>p.wakaId===w.id);
@@ -2364,11 +2490,11 @@ function renderRekapPage(sub){
         <td>${escapeHtml(w.jabatan||'-')}</td>
         <td>${jumlahProgram} program</td>
         <td>${jumlahSelesai>0 ? `<button class="link-count" onclick='openRekapDetail(${JSON.stringify(selesai.map(m=>m.id))}, "${escapeHtml(w.nama)}")'>${jumlahSelesai} program</button>` : `<span style="color:var(--muted);">0 program</span>`}</td>
-        <td>
+        <td>${liburDay ? `<div style="text-align:center;color:var(--muted);font-weight:600;">Libur</div>` : `
           <div style="display:flex;align-items:center;gap:8px;">
             <div class="pbar-track" style="flex:1;margin-bottom:0;"><div class="pbar-fill" style="width:${Math.min(pct,100)}%"></div></div>
             <b style="font-family:var(--font-head);font-size:14px;white-space:nowrap;width:46px;text-align:center;flex-shrink:0;">${pct}%</b>
-          </div>
+          </div>`}
         </td>
       </tr>`;
   }).join('');
@@ -2384,6 +2510,7 @@ function renderRekapPage(sub){
         <div><h3>Rekap Program ${jenisLabel(jenis)}</h3><div class="hint">Total program ${jenisLabel(jenis).toLowerCase()} terdaftar: ${totalProg}</div></div>
         <div class="toolbar">${(jenis==='harian' || jenis==='mingguan' || jenis==='bulanan') ? rekapRangeModeSwitch(jenis) : ''}<label style="font-size:12.5px;color:var(--muted);margin-right:6px;">Periode:</label>${periodInputHtml}<button class="btn btn-primary btn-sm" style="margin-left:10px;" onclick="printRekap()">Cetak Laporan</button></div>
       </div>
+      ${liburDay ? liburBannerHtml(activePeriod) : ''}
       <div class="tbl-wrap">
       <table>
         <thead><tr><th style="width:50px;">No</th><th style="width:190px;">Nama Waka</th><th style="width:150px;">Jabatan</th><th style="width:140px;">Jumlah Program</th><th style="width:140px;">Jumlah Selesai</th><th style="width:170px;text-align:center;">Prosentase</th></tr></thead>
@@ -2460,21 +2587,50 @@ function labelBulanKey(key){
 /* Program HARIAN: Jumlah Program satu bulan = jumlah program x jumlah hari dalam bulan itu
    (hitungan murni dari daftar program, tidak bergantung centang / approve).
    Bulan yang belum dimulai belum dihitung untuk prosentase (target = 0). */
+/* ---------- HARI LIBUR (khusus PROGRAM HARIAN) ----------
+   Pengaturan > Hari Libur: hari libur rutin per pekan + tanggal libur khusus.
+   Hari libur tidak dihitung: bukan bagian dari jumlah program, dan pengajuan di tanggal libur
+   tidak dihitung sebagai selesai. Program mingguan, bulanan, dan tahunan tidak terpengaruh. */
+const NAMA_HARI_DOW = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+function getHariLibur(){
+  const s = load('settings', {});
+  const h = (s && s.hariLibur) || {};
+  return {rutin: Array.isArray(h.rutin) ? h.rutin.map(Number) : [], tanggal: Array.isArray(h.tanggal) ? h.tanggal : []};
+}
+function liburInfoWith(ds, hl){
+  if(typeof ds!=='string' || ds.length!==10) return null;
+  const t = hl.tanggal.find(x=>x.mulai<=ds && ds<=(x.selesai||x.mulai));
+  if(t) return {ket: t.ket || 'Libur'};
+  const dow = parseLocalDate(ds).getDay();
+  if(hl.rutin.includes(dow)) return {ket: 'Libur rutin hari ' + NAMA_HARI_DOW[dow]};
+  return null;
+}
+function liburInfo(ds){ return liburInfoWith(ds, getHariLibur()); }
+function liburBannerHtml(ds){
+  const info = liburInfo(ds);
+  if(!info) return '';
+  return `<div style="padding:10px 20px;border-bottom:1px solid var(--line);font-size:12.5px;background:var(--accent-soft,#fff7e6);">&#128197; Tanggal ini libur: <b>${escapeHtml(info.ket)}</b>. Tidak dihitung dalam prosentase, tetapi program tetap bisa dicentang.</div>`;
+}
 function statHarianBulan(progIds, byProgram, monthKey, today){
   const y = Number(monthKey.slice(0,4)), m = Number(monthKey.slice(5,7));
   const monthDays = new Date(y, m, 0).getDate();
+  const hl = getHariLibur();
+  let efektif = 0;
+  for(let d=1; d<=monthDays; d++){
+    if(!liburInfoWith(monthKey + '-' + String(d).padStart(2,'0'), hl)) efektif++;
+  }
   const started = (monthKey + '-01') <= today;
-  const jumlah = progIds.length * monthDays;
+  const jumlah = progIds.length * efektif;
   let selesai = 0; const ids = [];
   if(started){
     progIds.forEach(pid=>{
       (byProgram[pid] || []).forEach(s=>{
-        if(typeof s.periode==='string' && s.periode.slice(0,7)===monthKey){ selesai++; ids.push(s.id); }
+        if(typeof s.periode==='string' && s.periode.slice(0,7)===monthKey && !liburInfoWith(s.periode, hl)){ selesai++; ids.push(s.id); }
       });
     });
   }
   const target = started ? jumlah : 0;
-  return {days:monthDays, monthDays, units:monthDays, started, jumlah, target, selesai, ids, pct: target>0 ? Math.round(selesai/target*100) : null};
+  return {days:monthDays, monthDays, efektif, liburDays: monthDays - efektif, units:efektif, started, jumlah, target, selesai, ids, pct: target>0 ? Math.round(selesai/target*100) : null};
 }
 /* Minggu (Jumat-Kamis) yang masuk ke sebuah bulan: minggu dihitung milik bulan tempat
    hari Senin-nya berada (hari ke-4 dari 7 hari = mayoritas hari minggu itu). */
@@ -2618,8 +2774,8 @@ function renderRekapRange(jenis, mode, wakas, progList, submissions){
     }
     if(jenis==='harian'){
       /* Program harian: Jumlah Program = jumlah program x jumlah hari dalam bulan */
-      const md = st0.monthDays;
-      hint = `${escapeHtml(labelBulanKey(bulan))} &middot; ${md} hari &middot; jumlah program = jumlah program harian &times; ${md} hari (dihitung dari daftar program, tanpa melihat sudah dicentang atau disetujui)`;
+      const md = st0.efektif;
+      hint = `${escapeHtml(labelBulanKey(bulan))} &middot; ${st0.monthDays} hari${st0.liburDays ? ', '+st0.liburDays+' hari libur' : ''} &middot; ${md} hari efektif &middot; jumlah program = jumlah program harian &times; ${md} hari efektif (dihitung dari daftar program, tanpa melihat sudah dicentang atau disetujui)`;
       thead = `<tr><th style="width:50px;">No</th><th style="width:190px;">Nama Waka</th><th style="width:150px;">Jabatan</th><th style="width:190px;">Jumlah Program</th><th style="width:130px;">Jumlah Selesai</th><th style="width:190px;text-align:center;">Prosentase</th></tr>`;
       let gJumlah = 0, gSelesai = 0, gTarget = 0, gProg = 0;
       rows = rowsInfo.map((r,i)=>{
@@ -2629,12 +2785,12 @@ function renderRekapRange(jenis, mode, wakas, progList, submissions){
           <td>${i+1}</td>
           <td>${escapeHtml(r.w.nama)}</td>
           <td>${escapeHtml(r.w.jabatan||'-')}</td>
-          <td><b>${st.jumlah}</b> program<div style="font-size:11px;color:var(--muted);">${r.progIds.length} program &times; ${st.monthDays} hari</div></td>
+          <td><b>${st.jumlah}</b> program<div style="font-size:11px;color:var(--muted);">${r.progIds.length} program &times; ${st.efektif} hari efektif</div></td>
           <td>${st.selesai>0 ? `<button class="link-count" onclick='openRekapDetail(${JSON.stringify(st.ids)}, "${escapeHtml(r.w.nama)}")'>${st.selesai}</button>` : `<span style="color:var(--muted);">0</span>`}</td>
           <td>${pctBarCell(st.pct)}</td>
         </tr>`;
       }).join('');
-      footer = rowsInfo.length>0 ? `<tr style="font-weight:700;background:var(--surface-2);"><td colspan="3" style="text-align:right;">Total</td><td>${gJumlah} program<div style="font-size:11px;color:var(--muted);font-weight:500;">${gProg} program &times; ${md} hari</div></td><td>${gSelesai}</td><td>${pctBarCell(gTarget>0 ? Math.round(gSelesai/gTarget*100) : null)}</td></tr>` : '';
+      footer = rowsInfo.length>0 ? `<tr style="font-weight:700;background:var(--surface-2);"><td colspan="3" style="text-align:right;">Total</td><td>${gJumlah} program<div style="font-size:11px;color:var(--muted);font-weight:500;">${gProg} program &times; ${md} hari efektif</div></td><td>${gSelesai}</td><td>${pctBarCell(gTarget>0 ? Math.round(gSelesai/gTarget*100) : null)}</td></tr>` : '';
     }
     if(jenis==='mingguan'){
       /* Program mingguan: Jumlah Program = pelaksanaan tiap program dalam bulan itu (sesuai kolom Hari) */
@@ -2670,7 +2826,7 @@ function renderRekapRange(jenis, mode, wakas, progList, submissions){
       </select>
       ${ta!==nowTA ? `<button class="btn btn-ghost btn-sm" onclick="resetRekapHarianRange()">Tahun Ajaran Aktif</button>` : ''}`;
     title = `Rekap Program ${jenisLabel(jenis)} &mdash; Satu Tahun Ajaran`;
-    hint = `Tahun ajaran ${escapeHtml(taLabel)} (Juli ${ta} - Juni ${ta+1}) &middot; sesuai Pengaturan &middot; ${jenis==='bulanan' ? 'prosentase per bulan = program selesai / jumlah program bulanan' : (jenis==='harian' ? 'prosentase per bulan = selesai / (jumlah program &times; jumlah hari dalam bulan)' : (jenis==='mingguan' ? 'prosentase per bulan = selesai / jumlah pelaksanaan program pada bulan itu (sesuai hari program)' : 'prosentase per bulan = selesai / (jumlah program &times; '+unit+' berjalan)'))}`;
+    hint = `Tahun ajaran ${escapeHtml(taLabel)} (Juli ${ta} - Juni ${ta+1}) &middot; sesuai Pengaturan &middot; ${jenis==='bulanan' ? 'prosentase per bulan = program selesai / jumlah program bulanan' : (jenis==='harian' ? 'prosentase per bulan = selesai / (jumlah program &times; hari efektif, tanpa hari libur)' : (jenis==='mingguan' ? 'prosentase per bulan = selesai / jumlah pelaksanaan program pada bulan itu (sesuai hari program)' : 'prosentase per bulan = selesai / (jumlah program &times; '+unit+' berjalan)'))}`;
     const months = [];
     for(let i=0;i<12;i++){
       const mm = ((6+i)%12)+1;
@@ -3126,6 +3282,69 @@ function resetWaIcons(){
   render();
   toast('Ikon Share WA dikembalikan ke bawaan');
 }
+function renderHariLiburSettings(){
+  const hl = getHariLibur();
+  const urut = [1,2,3,4,5,6,0];
+  const cek = urut.map(d=>`<label style="display:inline-flex;align-items:center;gap:6px;margin-right:16px;font-size:13.5px;"><input type="checkbox" id="hlDow_${d}" ${hl.rutin.includes(d)?'checked':''}> ${NAMA_HARI_DOW[d]}</label>`).join('');
+  const daftar = hl.tanggal.slice().sort((a,b)=>a.mulai<b.mulai?-1:1).map(t=>{
+    const rentang = (t.selesai && t.selesai!==t.mulai) ? formatTanggalLengkap(t.mulai) + ' &ndash; ' + formatTanggalLengkap(t.selesai) : formatTanggalLengkap(t.mulai);
+    return `<tr><td>${rentang}</td><td>${escapeHtml(t.ket||'-')}</td><td style="width:90px;"><button class="btn btn-danger btn-sm" onclick="deleteHariLibur('${t.id}')">Hapus</button></td></tr>`;
+  }).join('');
+  return `
+    <div class="card">
+      <div class="card-head"><div><h3>Hari Libur (Program Harian)</h3><div class="hint">Hari libur tidak dihitung pada prosentase program harian. Program mingguan, bulanan, dan tahunan tidak terpengaruh.</div></div></div>
+      <div style="padding:20px;">
+        <div class="field" style="margin-bottom:14px;">
+          <label>Hari libur rutin setiap pekan</label>
+          <div style="margin-bottom:10px;">${cek}</div>
+          <button class="btn btn-primary btn-sm" onclick="saveHariLiburRutin()">Simpan Hari Rutin</button>
+        </div>
+        <div class="field" style="margin-bottom:10px;">
+          <label>Tanggal libur khusus (libur nasional, cuti bersama, libur semester, dan lainnya)</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <input type="date" id="hlMulai" style="width:auto;"> <span style="color:var(--muted);">s/d</span> <input type="date" id="hlSelesai" style="width:auto;" title="Kosongkan jika hanya satu hari">
+            <input type="text" id="hlKet" placeholder="Keterangan, mis. Libur Nasional" style="width:auto;min-width:220px;flex:1;">
+            <button class="btn btn-primary btn-sm" onclick="addHariLibur()">Tambah</button>
+          </div>
+        </div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Tanggal</th><th>Keterangan</th><th></th></tr></thead>
+          <tbody>${daftar || '<tr class="empty-row"><td colspan="3">Belum ada tanggal libur khusus.</td></tr>'}</tbody>
+        </table></div>
+      </div>
+    </div>`;
+}
+function saveHariLiburRutin(){
+  const rutin = [0,1,2,3,4,5,6].filter(d=>{ const el = document.getElementById('hlDow_'+d); return el && el.checked; });
+  const settings = load('settings', {});
+  settings.hariLibur = {...getHariLibur(), rutin};
+  save('settings', settings);
+  render();
+  toast('Hari libur rutin disimpan');
+}
+function addHariLibur(){
+  const mulai = document.getElementById('hlMulai').value;
+  const selesai = document.getElementById('hlSelesai').value || mulai;
+  const ket = document.getElementById('hlKet').value.trim();
+  if(!mulai){ toast('Tanggal mulai wajib diisi'); return; }
+  if(selesai < mulai){ toast('Tanggal selesai tidak boleh sebelum tanggal mulai'); return; }
+  const settings = load('settings', {});
+  const hl = getHariLibur();
+  hl.tanggal = hl.tanggal.concat([{id:uid(), mulai, selesai, ket}]);
+  settings.hariLibur = hl;
+  save('settings', settings);
+  render();
+  toast('Tanggal libur ditambahkan');
+}
+function deleteHariLibur(id){
+  const settings = load('settings', {});
+  const hl = getHariLibur();
+  hl.tanggal = hl.tanggal.filter(t=>t.id!==id);
+  settings.hariLibur = hl;
+  save('settings', settings);
+  render();
+  toast('Tanggal libur dihapus');
+}
 function renderSettingsPage(){
   const settings = load('settings', {tahunAjaran:[], tahunAktif:'', theme:'light'});
   const jabatanList = load('jabatanList', []);
@@ -3178,6 +3397,8 @@ function renderSettingsPage(){
     </div>
 
     ${renderWaIconSettings()}
+
+    ${renderHariLiburSettings()}
 
     <div class="card">
       <div class="card-head"><div><h3>Tampilan</h3><div class="hint">Pilih mode tampilan aplikasi.</div></div></div>
