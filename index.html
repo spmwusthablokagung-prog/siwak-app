@@ -979,6 +979,19 @@ function render(){
   }
   document.getElementById('pageTitle').textContent = title;
   const c = document.getElementById('content');
+  /* Simpan posisi gulir supaya tidak lompat ke atas saat halaman yang sama digambar ulang
+     (mis. setelah mencentang program harian atau saat data diperbarui otomatis). */
+  const _routeKey = route.menu + '/' + (route.sub || '');
+  let _saved = null;
+  if(window._lastRenderRoute === _routeKey){
+    _saved = {
+      top: c.scrollTop,
+      left: c.scrollLeft,
+      win: window.pageYOffset || document.documentElement.scrollTop || 0,
+      wraps: Array.from(c.querySelectorAll('.tbl-wrap')).map(w=>[w.scrollTop, w.scrollLeft])
+    };
+  }
+  window._lastRenderRoute = _routeKey;
   if(route.menu==='dashboard') c.innerHTML = renderDashboard();
   else if(route.menu==='approve') c.innerHTML = renderApprovePage();
   else if(route.menu==='waka') c.innerHTML = renderWakaPage();
@@ -986,6 +999,15 @@ function render(){
   else if(route.menu==='rekap') c.innerHTML = renderRekapPage(route.sub||'harian');
   else if(route.menu==='user') c.innerHTML = renderUserPage(route.sub||'akun');
   else if(route.menu==='pengaturan'){ c.innerHTML = renderSettingsPage(); updateWaIconPreview(); }
+
+  if(_saved){
+    c.scrollTop = _saved.top;
+    c.scrollLeft = _saved.left;
+    if(_saved.win) window.scrollTo(0, _saved.win);
+    c.querySelectorAll('.tbl-wrap').forEach((w,i)=>{
+      if(_saved.wraps[i]){ w.scrollTop = _saved.wraps[i][0]; w.scrollLeft = _saved.wraps[i][1]; }
+    });
+  }
 
   const who = document.getElementById('whoBox');
   if(session) who.innerHTML = `<b>${escapeHtml(session.username)}</b>${capitalize(session.role)}`;
@@ -1111,6 +1133,8 @@ function jenisLabel(j){ return {harian:'Harian',mingguan:'Mingguan',bulanan:'Bul
 /* =========================================================
    DASHBOARD
 ========================================================= */
+function onDashBulan(v){ if(v){ window._dashBulan = v; render(); } }
+function resetDashBulan(){ window._dashBulan = ''; render(); }
 function renderDashboard(){
   const isWaka = session && session.role==='waka';
   const myWakaId = isWaka ? getMyWakaId() : null;
@@ -1124,20 +1148,44 @@ function renderDashboard(){
     programs = myWakaId ? programs.filter(p=>isMyWakaId(p.wakaId)) : [];
   }
 
+  /* Filter bulan: prosentase dihitung untuk SATU BULAN penuh (bulan berjalan atau bulan-bulan sebelumnya).
+     Hanya yang berstatus disetujui dihitung selesai, dan hanya program milik waka yang ikut dihitung. */
+  const today = todayHarianStr();
+  const nowBulan = today.slice(0,7);
+  const dashBulan = window._dashBulan || nowBulan;
+  const wakaIdSet = new Set(wakas.map(w=>w.id));
+  const progOwned = programs.filter(p=>wakaIdSet.has(p.wakaId));
+  const progById = {};
+  progOwned.forEach(p=>{ progById[p.id] = p; });
+  const byJenis = {};
+  submissions.forEach(s=>{
+    if(s.status!=='disetujui') return;
+    const bj = (byJenis[s.jenis] = byJenis[s.jenis] || {});
+    (bj[s.programId] = bj[s.programId] || []).push(s);
+  });
+  const capLabel = dashBulan===nowBulan ? 'Capaian bulan berjalan' : 'Capaian ' + labelBulanKey(dashBulan);
   const cards = jenisList.map(j=>{
-    const progOfJenis = programs.filter(p=>p.jenis===j);
-    const period = currentPeriod(j);
-    const expected = wakas.length * progOfJenis.length;
-    const actualPairs = new Set();
-    submissions.forEach(s=>{
-      if(s.jenis===j && s.periode===period && (!isWaka || isMyWakaId(s.wakaId))){ actualPairs.add(s.wakaId+'|'+s.programId); }
-    });
-    const pct = expected>0 ? Math.round((actualPairs.size/expected)*100) : 0;
+    const plist = progOwned.filter(p=>p.jenis===j);
+    const ids = plist.map(p=>p.id);
+    const by = byJenis[j] || {};
+    let st;
+    if(j==='harian') st = statHarianBulan(ids, by, dashBulan, today);
+    else if(j==='mingguan') st = statMingguanBulan(ids, by, dashBulan, today, progById);
+    else if(j==='bulanan') st = statBulananBulan(ids, by, dashBulan, today);
+    else st = statTahunanBulan(plist, by, dashBulan, today);
+    const pct = st.pct;
+    const satuan = j==='tahunan' ? 'program di bulan ini' : (j==='bulanan' ? 'program' : 'pelaksanaan');
+    let sub;
+    if(st.jumlah===0) sub = j==='tahunan' ? 'Tidak ada program tahunan pada bulan ini' : 'Belum ada program';
+    else if(!st.started) sub = 'Bulan belum dimulai &middot; ' + st.jumlah + ' ' + satuan;
+    else sub = st.selesai + ' dari ' + st.jumlah + ' ' + satuan;
+    if(j==='mingguan' && st.tanpaHari>0) sub += ' &middot; <span style="color:#b45309;">' + st.tanpaHari + ' program belum diberi hari</span>';
     return `
       <div class="prog-card">
         <div class="plabel"><span class="dot"></span> Program ${jenisLabel(j)}</div>
-        <div class="pbar-track"><div class="pbar-fill" style="width:${Math.min(pct,100)}%"></div></div>
-        <div class="pbar-meta"><span>Capaian periode berjalan</span><b>${pct}%</b></div>
+        <div class="pbar-track"><div class="pbar-fill" style="width:${Math.min(pct||0,100)}%"></div></div>
+        <div class="pbar-meta"><span>${escapeHtml(capLabel)}</span><b>${pct===null ? '-' : pct+'%'}</b></div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:6px;">${sub}</div>
       </div>`;
   }).join('');
 
@@ -1154,7 +1202,14 @@ function renderDashboard(){
         <div class="kpi-value">${programs.length}</div>
       </div>
     </div>
-    <div class="section-title"><h3>Prosentase Program &mdash; ${isWaka?'Saya':'Global'}</h3></div>
+    <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+      <h3>Prosentase Program &mdash; ${isWaka?'Saya':'Global'}</h3>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <label style="font-size:12.5px;color:var(--muted);">Bulan:</label>
+        <input type="month" value="${escapeHtml(dashBulan)}" onchange="onDashBulan(this.value)">
+        ${dashBulan!==nowBulan ? `<button class="btn btn-ghost btn-sm" onclick="resetDashBulan()">Bulan Ini</button>` : ''}
+      </div>
+    </div>
     <div class="prog-grid">${cards}</div>
   `;
 }
@@ -1162,6 +1217,35 @@ function renderDashboard(){
 /* =========================================================
    DATA WAKA
 ========================================================= */
+/* Jumlah semua program (harian, mingguan, bulanan, tahunan) milik seorang waka */
+function wakaProgramCount(wakaId){
+  return load('programs', []).filter(p=>p.wakaId===wakaId).length;
+}
+function openWakaProgramModal(wakaId){
+  const w = load('wakas', []).find(x=>x.id===wakaId);
+  if(!w) return;
+  const programs = load('programs', []).filter(p=>p.wakaId===wakaId);
+  const metaOf = p=>{
+    if(p.jenis==='mingguan') return p.hari ? 'Hari ' + p.hari : '';
+    if(p.jenis==='tahunan') return [p.bulan, p.tahun].filter(Boolean).join(' ');
+    return '';
+  };
+  const sections = ['harian','mingguan','bulanan','tahunan'].map(j=>{
+    const list = programs.filter(p=>p.jenis===j);
+    const items = list.map((p,i)=>`
+      <li>
+        <div class="pl-name">${i+1}. ${escapeHtml(p.nama)}</div>
+        ${metaOf(p) ? `<div class="pl-meta">${escapeHtml(metaOf(p))}</div>` : ''}
+      </li>`).join('');
+    return `
+      <div style="margin-bottom:18px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;background:var(--primary-soft);color:var(--primary-2);border-left:4px solid var(--primary-2);border-radius:8px;padding:9px 14px;margin-bottom:8px;font-weight:700;font-size:14px;"><span>Program ${jenisLabel(j)}</span><span style="font-weight:600;font-size:12.5px;">${list.length} program</span></div>
+        <ul class="popup-list">${items || '<li><div class="pl-meta">Belum ada program ' + jenisLabel(j).toLowerCase() + '.</div></li>'}</ul>
+      </div>`;
+  }).join('');
+  const head = `<div style="font-size:12.5px;color:var(--muted);margin-bottom:14px;">${escapeHtml(w.jabatan||'-')} &middot; Total ${programs.length} program</div>`;
+  openModal('Program ' + w.nama, head + sections, null, true);
+}
 function renderWakaPage(){
   const wakas = load('wakas', []);
   const rows = wakas.map((w,i)=>`
@@ -1169,7 +1253,8 @@ function renderWakaPage(){
       ${bulkCheckboxRowCell('wakas', w.id)}
       <td>${i+1}</td>
       <td>${escapeHtml(w.nama)}</td>
-      <td>${escapeHtml(w.jabatan)}</td>
+      <td style="white-space:nowrap;">${escapeHtml(w.jabatan)}</td>
+      <td style="text-align:center;">${wakaProgramCount(w.id)>0 ? `<button class="link-count" onclick="openWakaProgramModal('${w.id}')" title="Lihat seluruh program">${wakaProgramCount(w.id)} program</button>` : `<span style="color:var(--muted);">0 program</span>`}</td>
       <td>${escapeHtml(w.tahun)}</td>
       <td>${escapeHtml(w.email||'-')}</td>
       <td><div class="row-actions">
@@ -1191,8 +1276,8 @@ function renderWakaPage(){
       </div>
       <div class="tbl-wrap">
       <table>
-        <thead><tr>${bulkCheckboxHeaderCell('wakas', wakas.map(w=>w.id))}<th style="width:50px;">No</th><th style="width:340px;">Nama</th><th>Jabatan</th><th style="width:140px;">Tahun Menjabat</th><th style="width:240px;">Email</th><th style="width:150px;">Aksi</th></tr></thead>
-        <tbody>${rows || `<tr class="empty-row"><td colspan="${bulkEnabled()?7:6}">Belum ada data waka.</td></tr>`}</tbody>
+        <thead><tr>${bulkCheckboxHeaderCell('wakas', wakas.map(w=>w.id))}<th style="width:50px;">No</th><th style="min-width:240px;">Nama</th><th style="width:1%;white-space:nowrap;">Jabatan</th><th style="width:190px;text-align:center;">Jumlah Program</th><th style="width:150px;">Tahun Menjabat</th><th style="width:240px;">Email</th><th style="width:150px;">Aksi</th></tr></thead>
+        <tbody>${rows || `<tr class="empty-row"><td colspan="${bulkEnabled()?8:7}">Belum ada data waka.</td></tr>`}</tbody>
       </table>
       </div>
     </div>
@@ -2453,7 +2538,19 @@ function statBulananBulan(progIds, byProgram, monthKey, today){
     });
   }
   const target = progIds.length * units;
-  return {units, target, selesai, ids, pct: target>0 ? Math.round(selesai/target*100) : null};
+  return {units, jumlah: progIds.length, started: units>0, target, selesai, ids, pct: target>0 ? Math.round(selesai/target*100) : null};
+}
+/* Program TAHUNAN: hanya program yang Bulan-nya sama dengan bulan yang difilter
+   (dan Tahun-nya cocok, bila Tahun diisi) yang dihitung. Selesai = sudah disetujui untuk tahun itu. */
+function statTahunanBulan(progList, byProgram, monthKey, today){
+  const y = monthKey.slice(0,4);
+  const mName = BULAN_PROGRAM[Number(monthKey.slice(5,7)) - 1];
+  const inMonth = progList.filter(p=>p.bulan===mName && (!p.tahun || String(p.tahun)===y));
+  const started = (monthKey + '-01') <= today;
+  const jumlah = inMonth.length;
+  const selesai = started ? inMonth.filter(p=>(byProgram[p.id] || []).some(s=>String(s.periode)===y)).length : 0;
+  const target = started ? jumlah : 0;
+  return {units:1, jumlah, started, target, selesai, ids:[], pct: target>0 ? Math.round(selesai/target*100) : null};
 }
 function statRekapBulan(jenis, progIds, byProgram, monthKey, today, progById){
   if(jenis==='mingguan') return statMingguanBulan(progIds, byProgram, monthKey, today, progById);
