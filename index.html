@@ -628,6 +628,12 @@ function migratePermissionsIfNeeded(){
   const tambahProgramDefaults = {admin:true, 'kepala sekolah':false, waka:false, operator:true};
   const hapusMassalDefaults = {admin:true, 'kepala sekolah':false, waka:false, operator:false};
   const shareWADefaults = {admin:true, 'kepala sekolah':true, waka:true, operator:true};
+  /* Tombol Edit / Hapus pada Data Program dan Data Waka (bisa diatur di Kelola Akses) */
+  const centangHarianDefaults = {admin:true, 'kepala sekolah':true, waka:false, operator:true};
+  const editProgramDefaults = {admin:true, 'kepala sekolah':false, waka:true, operator:true};
+  const hapusProgramDefaults = {admin:true, 'kepala sekolah':false, waka:true, operator:true};
+  const editWakaDefaults = {admin:true, 'kepala sekolah':true, waka:false, operator:true};
+  const hapusWakaDefaults = {admin:true, 'kepala sekolah':true, waka:false, operator:true};
   Object.keys(defaults).forEach(role=>{
     if(perms[role] && perms[role].approve===undefined){ perms[role].approve = defaults[role]; changed = true; }
     if(perms[role] && perms[role].programHarian===undefined){ perms[role].programHarian = true; changed = true; }
@@ -635,6 +641,16 @@ function migratePermissionsIfNeeded(){
     if(perms[role] && perms[role].hapusMassal===undefined){ perms[role].hapusMassal = hapusMassalDefaults[role]; changed = true; }
     if(perms[role] && perms[role].shareWA===undefined){ perms[role].shareWA = shareWADefaults[role]; changed = true; }
     if(perms[role] && perms[role].selesaiSemua===undefined){ perms[role].selesaiSemua = true; changed = true; }
+    if(perms[role] && perms[role].centangHarian===undefined){
+      perms[role].centangHarian = centangHarianDefaults[role];
+      /* Pertama kali izin ini dibuat: akun waka diberi akses lihat Data Program, tanpa bisa mencentang */
+      if(role==='waka'){ perms.waka.program = true; perms.waka.programHarian = true; perms.waka.selesaiSemua = false; }
+      changed = true;
+    }
+    if(perms[role] && perms[role].editProgram===undefined){ perms[role].editProgram = editProgramDefaults[role]; changed = true; }
+    if(perms[role] && perms[role].hapusProgram===undefined){ perms[role].hapusProgram = hapusProgramDefaults[role]; changed = true; }
+    if(perms[role] && perms[role].editWaka===undefined){ perms[role].editWaka = editWakaDefaults[role]; changed = true; }
+    if(perms[role] && perms[role].hapusWaka===undefined){ perms[role].hapusWaka = hapusWakaDefaults[role]; changed = true; }
   });
   if(changed) save('permissions', perms);
 }
@@ -1266,8 +1282,8 @@ function renderWakaPage(){
       <td>${escapeHtml(w.tahun)}</td>
       <td>${escapeHtml(w.email||'-')}</td>
       <td><div class="row-actions">
-        <button class="btn btn-ghost btn-sm" onclick="openWakaModal('${w.id}')">Edit</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteWaka('${w.id}')">Hapus</button>
+        ${canAccess('editWaka') ? `<button class="btn btn-ghost btn-sm" onclick="openWakaModal('${w.id}')">Edit</button>` : ''}
+        ${canAccess('hapusWaka') ? `<button class="btn btn-danger btn-sm" onclick="deleteWaka('${w.id}')">Hapus</button>` : ''}
       </div></td>
     </tr>`).join('');
   return `
@@ -1293,6 +1309,7 @@ function renderWakaPage(){
 }
 function isValidEmail(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
 function openWakaModal(id){
+  if(id && !canAccess('editWaka')){ toast('Anda tidak memiliki akses untuk mengedit data waka'); return; }
   const wakas = load('wakas', []);
   const jabatanList = load('jabatanList', []);
   const w = id ? wakas.find(x=>x.id===id) : null;
@@ -1332,6 +1349,7 @@ function openWakaModal(id){
   });
 }
 function deleteWaka(id){
+  if(!canAccess('hapusWaka')){ toast('Anda tidak memiliki akses untuk menghapus data waka'); return; }
   confirmModal('Hapus data waka ini? Rekap terkait waka ini tidak akan ditampilkan lagi.', ()=>{
     save('wakas', load('wakas', []).filter(x=>x.id!==id));
     render();
@@ -1611,8 +1629,8 @@ function renderProgramPage(jenisSub){
       <td>${wakaNamaJabatanHtml(p.wakaId)}</td>
       <td><div class="row-actions center">
         ${ajukanBtn}
-        ${isKepsek || isLocked ? '' : `<button class="btn btn-ghost btn-sm" onclick="openProgramModal('${p.id}')">Edit</button>`}
-        ${isKepsek ? '' : `<button class="btn btn-danger btn-sm" onclick="deleteProgram('${p.id}')">Hapus</button>`}
+        ${(!canAccess('editProgram') || isLocked) ? '' : `<button class="btn btn-ghost btn-sm" onclick="openProgramModal('${p.id}')">Edit</button>`}
+        ${!canAccess('hapusProgram') ? '' : `<button class="btn btn-danger btn-sm" onclick="deleteProgram('${p.id}')">Hapus</button>`}
       </div></td>
     </tr>`;
   }).join('');
@@ -1689,16 +1707,16 @@ function renderProgramHarianPage(){
       <td>${escapeHtml(p.nama)}</td>
       <td>${wakaNamaJabatanHtml(p.wakaId)}</td>
       <td>
-        <label style="display:flex;align-items:center;gap:8px;cursor:${hasPelaksana?'pointer':'not-allowed'};">
-          <input type="checkbox" class="chk" ${isChecked?'checked':''} ${!hasPelaksana?'disabled':''} onchange="toggleHarianSelesai('${p.id}', this.checked)">
+        <label style="display:flex;align-items:center;gap:8px;cursor:${(hasPelaksana && canAccess('centangHarian'))?'pointer':'not-allowed'};">
+          <input type="checkbox" class="chk" ${isChecked?'checked':''} ${(!hasPelaksana || !canAccess('centangHarian'))?'disabled':''} onchange="toggleHarianSelesai('${p.id}', this.checked)">
           ${statusLabel}
         </label>
       </td>
       <td style="font-size:13px;">${waktu}</td>
       <td>${ketepatan}</td>
       <td><div class="row-actions center">
-        <button class="btn btn-ghost btn-sm" onclick="openProgramModal('${p.id}')">Edit</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteProgram('${p.id}')">Hapus</button>
+        ${canAccess('editProgram') ? `<button class="btn btn-ghost btn-sm" onclick="openProgramModal('${p.id}')">Edit</button>` : ''}
+        ${canAccess('hapusProgram') ? `<button class="btn btn-danger btn-sm" onclick="deleteProgram('${p.id}')">Hapus</button>` : ''}
       </div></td>
     </tr>`;
   }).join('');
@@ -1706,7 +1724,7 @@ function renderProgramHarianPage(){
     ${isWaka && !myWakaId ? `<div class="card" style="padding:16px 20px;margin-bottom:18px;border-color:var(--accent);"><span style="font-size:13.5px;color:var(--muted);">Akun Anda belum terhubung ke data waka manapun, sehingga belum ada program harian yang bisa ditampilkan. Hubungi admin.</span></div>` : ''}
     <div class="card">
       <div class="card-head">
-        <div><h3>Program Harian</h3><div class="hint">${isWaka? 'Centang tugas yang sudah selesai dikerjakan pada tanggal terpilih.' : 'Seluruh program harian dari semua waka.'}</div></div>
+        <div><h3>Program Harian</h3><div class="hint">${!canAccess('centangHarian') ? 'Anda hanya dapat melihat status program harian pada tanggal terpilih (tidak dapat mencentang).' : (isWaka? 'Centang tugas yang sudah selesai dikerjakan pada tanggal terpilih.' : 'Seluruh program harian dari semua waka.')}</div></div>
         <div class="toolbar">
           ${canAccess('selesaiSemua') ? `<button class="btn btn-accent" onclick="checkAllHarianSelesai()">&#10003; Centang Selesai Semua</button>` : ''}
           ${canAccess('shareWA') ? `<button class="btn" style="background:#25D366;color:#fff;" onclick="shareHarianWA()">&#128172; Share WA</button>` : ''}
@@ -1847,6 +1865,7 @@ function formatDateOnly(iso){
   return `${d.getDate()} ${bulan[d.getMonth()]} ${d.getFullYear()}`;
 }
 function toggleHarianSelesai(programId, checked){
+  if(!canAccess('centangHarian')){ toast('Akun Anda hanya dapat melihat program harian, tidak dapat mencentang'); render(); return; }
   const programs = load('programs', []);
   const p = programs.find(x=>x.id===programId);
   if(!p) return;
@@ -1874,7 +1893,7 @@ function toggleHarianSelesai(programId, checked){
 }
 function checkAllHarianSelesai(){ toggleHarianSelesaiSemua(true); }
 function toggleHarianSelesaiSemua(checked){
-  if(!canAccess('selesaiSemua')){ toast('Fitur ini dinonaktifkan oleh admin'); return; }
+  if(!canAccess('selesaiSemua') || !canAccess('centangHarian')){ toast('Fitur ini dinonaktifkan oleh admin'); return; }
   const isWaka = session && session.role==='waka';
   const myWakaId = isWaka ? getMyWakaId() : null;
   const period = window._harianFilterDate || todayHarianStr();
@@ -2103,6 +2122,7 @@ function ssKey(e, id){
   }
 }
 function openProgramModal(id, defaultJenis){
+  if(id && !canAccess('editProgram')){ toast('Anda tidak memiliki akses untuk mengedit program'); return; }
   const programs = load('programs', []);
   const _isWakaRole = session && session.role==='waka';
   const wakas = _isWakaRole ? load('wakas', []).filter(w=>isMyWakaId(w.id)) : load('wakas', []);
@@ -2173,6 +2193,7 @@ function openProgramModal(id, defaultJenis){
   });
 }
 function deleteProgram(id){
+  if(!canAccess('hapusProgram')){ toast('Anda tidak memiliki akses untuk menghapus program'); return; }
   confirmModal('Hapus program ini beserta seluruh riwayat pengajuannya?', ()=>{
     save('programs', load('programs', []).filter(x=>x.id!==id));
     save('submissions', load('submissions', []).filter(x=>x.programId!==id));
@@ -2466,7 +2487,7 @@ function renderRekapPage(sub){
   if((jenis==='harian' || jenis==='mingguan' || jenis==='bulanan') && rekapRangeMode(jenis)!=='dasar') return renderRekapRange(jenis, rekapRangeMode(jenis), wakas, progOfJenis, submissions);
 
   const periodInputHtml = {
-    harian: `<input type="date" id="rekapPeriod" value="${window._rekapPeriod && window._rekapPeriod[jenis] || todayHarianStr()}" onchange="onRekapPeriodChange('${jenis}', this.value)">`,
+    harian: rekapHarianControl(),
     mingguan: rekapWeekControl(),
     bulanan: `<input type="month" id="rekapPeriod" value="${window._rekapPeriod && window._rekapPeriod[jenis] || currentMonthStr()}" onchange="onRekapPeriodChange('${jenis}', this.value)">`,
     tahunan: `<input type="number" id="rekapPeriod" style="width:110px;" value="${window._rekapPeriod && window._rekapPeriod[jenis] || currentYearStr()}" onchange="onRekapPeriodChange('${jenis}', this.value)">`,
@@ -2989,6 +3010,21 @@ function shiftRekapWeek(n){
   if(!r) return;
   onRekapPeriodChange('mingguan', getWeekKey(new Date(r.start.getFullYear(), r.start.getMonth(), r.start.getDate() + 7*n)));
 }
+/* Rekap Per Hari: tanggal dengan tombol geser hari sebelumnya / berikutnya */
+function rekapHarianControl(){
+  const cur = (window._rekapPeriod && window._rekapPeriod.harian) || todayHarianStr();
+  const isToday = cur===todayHarianStr();
+  return `<button class="btn btn-ghost btn-sm" style="font-size:20px;line-height:1;padding:3px 12px;" onclick="shiftRekapHarian(-1)" title="Hari sebelumnya" aria-label="Hari sebelumnya">&#8249;</button>
+    <input type="date" id="rekapPeriod" value="${escapeHtml(cur)}" onchange="onRekapPeriodChange('harian', this.value)">
+    <button class="btn btn-ghost btn-sm" style="font-size:20px;line-height:1;padding:3px 12px;" onclick="shiftRekapHarian(1)" title="Hari berikutnya" aria-label="Hari berikutnya">&#8250;</button>
+    ${isToday ? '' : `<button class="btn btn-ghost btn-sm" onclick="onRekapPeriodChange('harian', '${todayHarianStr()}')">Hari Ini</button>`}`;
+}
+function shiftRekapHarian(n){
+  const cur = (window._rekapPeriod && window._rekapPeriod.harian) || todayHarianStr();
+  const d = parseLocalDate(cur);
+  d.setDate(d.getDate() + n);
+  onRekapPeriodChange('harian', localDateStr(d));
+}
 function onRekapPeriodChange(jenis, val){
   window._rekapPeriod = window._rekapPeriod || {};
   window._rekapPeriod[jenis] = val;
@@ -3134,8 +3170,13 @@ function renderAksesPage(){
   const menus = [{key:'dashboard',label:'Dashboard'},{key:'approve',label:'Approve Program'},{key:'waka',label:'Data Waka'},{key:'program',label:'Data Program &rsaquo; Mingguan, Bulanan, Tahunan'},{key:'programHarian',label:'Data Program &rsaquo; Program Harian'},{key:'rekap',label:'Rekap Program'},{key:'user',label:'User'},{key:'pengaturan',label:'Pengaturan'}];
   const fitur = [
     {key:'tambahProgram',label:'Tombol Tambah Program (menu Data Program, semua submenu)'},
+    {key:'editProgram',label:'Tombol Edit Program (menu Data Program, semua submenu)'},
+    {key:'hapusProgram',label:'Tombol Hapus Program (menu Data Program, semua submenu)'},
+    {key:'editWaka',label:'Tombol Edit di Data Waka'},
+    {key:'hapusWaka',label:'Tombol Hapus di Data Waka'},
     {key:'hapusMassal',label:'Centang &amp; Hapus Massal di Semua Tabel'},
     {key:'shareWA',label:'Tombol Share WA (menu Data Program, semua submenu)'},
+    {key:'centangHarian',label:'Mencentang Selesai per Program (Data Program &rsaquo; Program Harian). Dimatikan = hanya bisa melihat'},
     {key:'selesaiSemua',label:'Centang Selesai Semua (Data Program &rsaquo; Program Harian)'}
   ];
   const rows = menus.map(m=>`
